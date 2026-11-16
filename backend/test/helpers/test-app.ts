@@ -13,6 +13,7 @@ import type { CardDetails, CardScanner } from '../../src/modules/card-scan/card-
 import type { GoogleIdentity, GoogleVerifier } from '../../src/modules/auth/google.js';
 import type { Mail, Mailer } from '../../src/modules/mail/mailer.js';
 import type { PushMessage, PushSender } from '../../src/modules/notifications/push.js';
+import type { Assistant, ChatLine, SiteFacts } from '../../src/modules/assistant/assistant.js';
 
 /** Keeps every email so tests can read the codes out of them. */
 export class CapturingMailer implements Mailer {
@@ -70,12 +71,26 @@ export class FakeCardScanner implements CardScanner {
   }
 }
 
+/** Stands in for the help chat: answers [answer], or throws when [fail] is set; keeps what it was asked. */
+export class FakeAssistant implements Assistant {
+  answer = 'تمام';
+  fail = false;
+  asked: { lines: ChatLine[]; facts: SiteFacts }[] = [];
+
+  async reply(lines: ChatLine[], facts: SiteFacts): Promise<string> {
+    this.asked.push({ lines, facts });
+    if (this.fail) throw new Error('assistant down');
+    return this.answer;
+  }
+}
+
 export type TestApp = {
   api: ReturnType<typeof request>;
   mailer: CapturingMailer;
   google: FakeGoogle;
   push: CapturingPush;
   cardScanner: FakeCardScanner;
+  assistant: FakeAssistant;
   container: Container;
   reset(): Promise<void>;
   close(): Promise<void>;
@@ -99,7 +114,8 @@ export async function startTestApp(): Promise<TestApp> {
   const google = new FakeGoogle();
   const push = new CapturingPush();
   const cardScanner = new FakeCardScanner();
-  const container = createContainer(connection, env, { mailer, google, push, cardScanner });
+  const assistant = new FakeAssistant();
+  const container = createContainer(connection, env, { mailer, google, push, cardScanner, assistant });
   await Promise.all(Object.values(container.models).map((model) => model.syncIndexes()));
   const api = request(createApp(container));
 
@@ -109,6 +125,7 @@ export async function startTestApp(): Promise<TestApp> {
     google,
     push,
     cardScanner,
+    assistant,
     container,
     async reset() {
       await container.notifications.flush();
@@ -117,6 +134,9 @@ export async function startTestApp(): Promise<TestApp> {
       push.dead.clear();
       cardScanner.fail = false;
       cardScanner.scanned.length = 0;
+      assistant.fail = false;
+      assistant.answer = 'تمام';
+      assistant.asked.length = 0;
       // Every collection, so each test starts empty.
       await Promise.all(
         Object.values(container.connection.collections).map((collection) =>

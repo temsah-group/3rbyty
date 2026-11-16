@@ -313,7 +313,7 @@ export interface Offer {
 
 export interface AppConfig {
   /** Optional features this server has switched on. */
-  features?: { cardScan: boolean };
+  features?: { cardScan: boolean; assistant?: boolean };
   support: { email: string; phone: string; whatsapp: string } | null;
   terms: { sections: DocSection[]; updatedAt: string | null };
   privacy: { sections: DocSection[]; updatedAt: string | null };

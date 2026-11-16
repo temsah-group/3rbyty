@@ -36,6 +36,7 @@ import { createSettingsModel, SettingsService, supportInput } from './modules/se
 import { createContactModel, createReviewModel } from './modules/reviews/review.model.js';
 import { ReviewsService } from './modules/reviews/reviews.service.js';
 import { ClaudeCardScanner, type CardScanner } from './modules/card-scan/card-scan.js';
+import { ClaudeAssistant, type Assistant } from './modules/assistant/assistant.js';
 import { createPartRequestModel, createRequestReplyModel, RequestsService } from './modules/requests/requests.js';
 import { createShopModel } from './modules/shops/shop.model.js';
 import { shopInputSchema } from './modules/shops/shops.schemas.js';
@@ -49,7 +50,7 @@ import { UsersService } from './modules/users/users.service.js';
 export function createContainer(
   connection: Connection,
   env: Env,
-  overrides: { mailer?: Mailer; google?: GoogleVerifier; push?: PushSender; cardScanner?: CardScanner | null } = {},
+  overrides: { mailer?: Mailer; google?: GoogleVerifier; push?: PushSender; cardScanner?: CardScanner | null; assistant?: Assistant | null } = {},
 ) {
   const models = {
     User: createUserModel(connection),
@@ -222,6 +223,13 @@ export function createContainer(
         ? overrides.cardScanner
         : env.ANTHROPIC_API_KEY
           ? new ClaudeCardScanner(env.ANTHROPIC_API_KEY)
+          : null,
+    // The same key runs the site's help chat; without it the chat bubble is hidden.
+    assistant:
+      overrides.assistant !== undefined
+        ? overrides.assistant
+        : env.ANTHROPIC_API_KEY
+          ? new ClaudeAssistant(env.ANTHROPIC_API_KEY)
           : null,
     photos,
     parts,

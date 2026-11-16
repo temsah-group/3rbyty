@@ -8,6 +8,7 @@ import { language } from './middleware/language.js';
 import { adminRoutes } from './modules/admin/admin.routes.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { cardScanRoutes } from './modules/card-scan/card-scan.js';
+import { assistantRoutes } from './modules/assistant/assistant.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { notificationsRoutes } from './modules/notifications/notifications.routes.js';
 import { partsRoutes, uploadRoutes } from './modules/parts/parts.routes.js';
@@ -63,6 +64,19 @@ export function createApp(container: Container) {
   const api = Router();
   api.use('/health', healthRoutes(container.connection));
   api.use('/auth/scan-card', cardScanRoutes(container.cardScanner));
+  api.use(
+    '/assistant',
+    assistantRoutes(container.assistant, async () => {
+      const current = await container.settings.current();
+      return {
+        faq: current.faq.sections.map((section) => ({
+          title: section.titleAr,
+          body: section.bodyAr.replaceAll('{supportEmail}', current.support?.email ?? ''),
+        })),
+        support: current.support,
+      };
+    }),
+  );
   api.use('/auth', authRoutes(container.auth, container.requireAuth));
   // Before `/users`, which requires a session for everything under it.
   api.use('/users/me/saved', savedRoutes(container.saved, container.requireAuth));
@@ -91,7 +105,7 @@ export function createApp(container: Container) {
       container.settings,
       () => container.announcements.banner(),
       () => container.offers.live(),
-      { cardScan: container.cardScanner !== null },
+      { cardScan: container.cardScanner !== null, assistant: container.assistant !== null },
     ),
   );
   app.use(API_PREFIX, api);

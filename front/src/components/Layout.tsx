@@ -13,6 +13,7 @@ import { persisted } from '@/lib/store';
 
 import { SearchBox } from './search';
 import { Avatar, Button, cx, Dialog } from './ui';
+import { HelpChat } from './HelpChat';
 import { InstallBanner } from './InstallBanner';
 
 export function Logo({ light }: { light?: boolean }) {
@@ -242,6 +243,7 @@ export function Layout() {
       <Footer />
       <BottomNav />
       <InstallBanner />
+      <HelpChat />
       <SessionEndedDialog />
     </div>
   );

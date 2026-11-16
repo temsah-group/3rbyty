@@ -94,6 +94,14 @@ const messages = {
     ar: 'معرفناش نقرا الكارت، جرّب صورة أوضح أو اكتب البيانات بإيدك',
     en: "We couldn't read the card. Try a clearer photo or type the details",
   },
+  'assistant.off': {
+    ar: 'المساعد مش متاح دلوقتي، شوف صفحة المساعدة',
+    en: 'The assistant is not available right now. See the help page',
+  },
+  'assistant.failed': {
+    ar: 'المساعد مردّش، جرّب تاني كمان شوية',
+    en: "The assistant couldn't answer. Please try again shortly",
+  },
   'auth.googleInvalid': {
     ar: 'تعذر التأكد من حساب جوجل، جرّب تاني',
     en: 'We could not confirm your Google account. Please try again',
@@ -411,6 +419,10 @@ const messages = {
   'validation.description': {
     ar: 'الوصف طويل جداً',
     en: 'The description is too long',
+  },
+  'validation.chat': {
+    ar: 'اكتب سؤالك (لحد ٥٠٠ حرف)',
+    en: 'Type your question (up to 500 characters)',
   },
   'validation.query': { ar: 'بيانات البحث غير صحيحة', en: 'The search is not valid' },
   'users.photoTooLarge': {

@@ -51,8 +51,8 @@ describe('business card scan', () => {
     expect(res.body.code).toBe('CARD_SCAN_OFF');
 
     const config = await off.get('/api/v1/app-config').expect(200);
-    expect(config.body.data.features).toEqual({ cardScan: false });
+    expect(config.body.data.features).toMatchObject({ cardScan: false });
     const on = await app.api.get('/api/v1/app-config').expect(200);
-    expect(on.body.data.features).toEqual({ cardScan: true });
+    expect(on.body.data.features).toMatchObject({ cardScan: true });
   });
 });
