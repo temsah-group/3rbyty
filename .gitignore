@@ -1,0 +1,4 @@
+node_modules/
+# Built upload packages (deploy/make-package.mjs makes them).
+deploy/3arabity-app/
+deploy/*.zip
