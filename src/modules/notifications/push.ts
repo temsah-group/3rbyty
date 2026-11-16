@@ -64,6 +64,8 @@ function toFcm(message: PushMessage): Message {
     data: message.data,
     android: { priority: 'high', notification: { channelId: ANDROID_CHANNEL } },
     apns: { payload: { aps: { sound: 'default' } } },
+    // The website's service worker shows it; urgent so it arrives at once.
+    webpush: { headers: { Urgency: 'high' } },
   };
 }
 

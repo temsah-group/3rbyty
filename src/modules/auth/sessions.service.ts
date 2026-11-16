@@ -10,7 +10,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type IssuedSession = { userId: string; sessionId: string; refreshToken: string };
 
-/** Refresh tokens: `<selector>.<secret>`, single use, rotated on every refresh. */
+/**
+ * Refresh tokens: `<selector>.<secret>`, single use, rotated on every refresh.
+ * A session ends only after [days] without a refresh: each one moves its end
+ * that far ahead, so someone who keeps using the site stays signed in.
+ */
 export class SessionsService {
   constructor(private readonly tokens: RefreshTokenModel) {}
 
@@ -20,6 +24,7 @@ export class SessionsService {
       userId: new Types.ObjectId(userId),
       sessionId,
       device,
+      idleDays: days,
       expiresAt: new Date(Date.now() + days * DAY_MS),
     });
     return { userId, sessionId, refreshToken };
@@ -57,7 +62,8 @@ export class SessionsService {
       userId: row.userId,
       sessionId: row.sessionId,
       device: (device ?? row.device).slice(0, 200),
-      expiresAt: row.expiresAt,
+      idleDays: row.idleDays ?? null,
+      expiresAt: row.idleDays ? new Date(Date.now() + row.idleDays * DAY_MS) : row.expiresAt,
     });
     return { userId: row.userId.toString(), sessionId: row.sessionId, refreshToken: next };
   }
@@ -121,6 +127,7 @@ export class SessionsService {
     userId: Types.ObjectId;
     sessionId: string;
     device: string;
+    idleDays: number | null;
     expiresAt: Date;
   }): Promise<string> {
     const selector = randomBytes(18).toString('base64url');

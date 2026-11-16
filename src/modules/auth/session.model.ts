@@ -35,7 +35,13 @@ const refreshTokenSchema = new Schema(
     rotatedAt: { type: Date, default: null },
     revokedAt: { type: Date, default: null },
     revokeReason: { type: String, default: null },
-    /** The session's end; every token of a session shares it. */
+    /**
+     * How many days the session lives without being used; each refresh
+     * pushes [expiresAt] that far ahead. Null on rows from before sessions
+     * slid, which keep their fixed end.
+     */
+    idleDays: { type: Number, default: null },
+    /** The session's end, unless it is used before then. */
     expiresAt: { type: Date, required: true },
   },
   { timestamps: { createdAt: true, updatedAt: false }, collection: 'refresh_tokens' },

@@ -12,7 +12,9 @@ export const NOTIFICATION_KINDS = [
   'LISTING',
   'SHOP',
   'REVIEW',
+  'ACCOUNT',
   'SYSTEM',
+  'PART_REQUEST',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -27,6 +29,8 @@ const notificationSchema = new Schema(
     kind: { type: String, enum: NOTIFICATION_KINDS, required: true },
     params: { type: [String], default: [] },
     partId: { type: Schema.Types.ObjectId, ref: 'Part', default: null },
+    /** The part request it opens: a new one for a shop, an answer for its buyer. */
+    requestId: { type: Schema.Types.ObjectId, ref: 'PartRequest', default: null },
     /** The shop it opens, for news about a shop. */
     shopId: { type: Schema.Types.ObjectId, ref: 'Shop', default: null },
     /** The dashboard announcement it delivers, so removing that removes it. */
@@ -49,12 +53,12 @@ export type NotificationModel = Model<Notification>;
 export const createNotificationModel = (connection: Connection): NotificationModel =>
   connection.model<Notification>('Notification', notificationSchema);
 
-/** A phone that gets push notifications for a user, by its push token. */
+/** A phone or browser that gets push notifications for a user, by its push token. */
 const deviceSchema = new Schema(
   {
     token: { type: String, required: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    platform: { type: String, enum: ['ios', 'android'], required: true },
+    platform: { type: String, enum: ['ios', 'android', 'web'], required: true },
     /** The app's language when it registered; pushes are written in it. */
     lang: { type: String, enum: ['ar', 'en'], default: 'ar' },
   },

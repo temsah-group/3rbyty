@@ -6,7 +6,7 @@ import { AppError, badRequest, ErrorCode } from '../../common/http/errors.js';
 import { send } from '../../common/http/response.js';
 import { parseBody } from '../../common/http/validate.js';
 import { fullName, password, phone } from '../auth/auth.schemas.js';
-import { findModel, modelYears } from '../catalog/catalog.js';
+import { resolveCar, yearFits } from '../catalog/car-ref.js';
 import type { AccountService } from './account.service.js';
 import { MAX_PHOTO_MB, photoExtension } from './photo-storage.js';
 import { presentUser } from './user.presenter.js';
@@ -31,36 +31,48 @@ const changePasswordSchema = z
 
 export const MAX_CARS = 5;
 
-/** The garage: cars from the catalog, each once, in a year the model was made. */
+/**
+ * The garage: each car once, a catalog make and model or ones typed by hand
+ * (`brandId: "other"` with `brandName`, or a `modelName`), in a year from
+ * 1950 to the model's last.
+ */
 const carsSchema = z.strictObject({
   items: z
     .array(
       z
         .strictObject({
           brandId: z.string('validation.car'),
-          modelId: z.string('validation.car'),
+          brandName: z.string('validation.car').max(60, 'validation.car').nullish(),
+          modelId: z.string('validation.car').nullish(),
+          modelName: z.string('validation.car').max(60, 'validation.car').nullish(),
           year: z.number('validation.car').int('validation.car'),
         })
-        .refine((car) => {
-          const model = findModel(car.brandId, car.modelId);
-          if (!model) return false;
-          const [first, last] = modelYears(model);
-          return car.year >= first && car.year <= last;
-        }, 'validation.car'),
+        .transform((value, ctx) => {
+          const car = resolveCar(value);
+          // A garage car needs a model, from the list or typed.
+          if (!car || (!car.modelId && !car.modelKey) || !yearFits(car.model, value.year)) {
+            ctx.addIssue({ code: 'custom', message: 'validation.car' });
+            return z.NEVER;
+          }
+          const { model: _model, ...ref } = car;
+          return { ...ref, year: value.year };
+        }),
       'validation.car',
     )
     .refine(
       (cars) =>
-        new Set(cars.map((car) => `${car.brandId}:${car.modelId}:${car.year}`)).size ===
-        cars.length,
+        new Set(cars.map((car) => `${car.brandKey ?? car.brandId}:${car.modelId ?? car.modelKey}:${car.year}`)).size === cars.length,
       'validation.car',
     ),
 });
 
-const presentCars = (user: { cars?: { brandId: string; modelId: string; year: number }[] }) => ({
+type StoredCar = { brandId: string; brandName?: string | null; modelId?: string | null; modelName?: string | null; year: number };
+const presentCars = (user: { cars?: StoredCar[] }) => ({
   items: (user.cars ?? []).map((car) => ({
     brandId: car.brandId,
-    modelId: car.modelId,
+    brandName: car.brandName ?? null,
+    modelId: car.modelId ?? null,
+    modelName: car.modelName ?? null,
     year: car.year,
   })),
 });

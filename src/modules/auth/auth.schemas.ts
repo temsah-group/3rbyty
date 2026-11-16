@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { isGovernorate } from '../catalog/catalog.js';
 import { OtpPurpose } from './otp.model.js';
 
 // Messages are i18n keys; `parseBody` translates them.
@@ -29,6 +30,16 @@ export const fullName = z
 
 const otpPurpose = z.enum([OtpPurpose.REGISTER, OtpPurpose.PASSWORD_RESET], 'validation.purpose');
 
+/**
+ * Signing up as a shop: what opening it needs beyond the account. Same rules
+ * as the shop form; its number is the account's.
+ */
+const signUpShop = z.strictObject({
+  name: z.string('validation.shopName').trim().min(3, 'validation.shopName').max(60, 'validation.shopName'),
+  city: z.string('validation.city').refine(isGovernorate, 'validation.city'),
+  address: z.string('validation.address').trim().min(5, 'validation.address').max(200, 'validation.address'),
+});
+
 // The app calls the email `identifier`, leaving room for phone sign-in later.
 export const registerSchema = z
   .strictObject({
@@ -37,6 +48,7 @@ export const registerSchema = z
     phone,
     password,
     confirmPassword: z.string('validation.required'),
+    shop: signUpShop.optional(),
   })
   .refine((value) => value.password === value.confirmPassword, {
     message: 'validation.passwordMismatch',

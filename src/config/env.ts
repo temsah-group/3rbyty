@@ -103,6 +103,11 @@ const schema = z
 
     /** Where uploaded photos are kept, served under /uploads. */
     UPLOADS_DIR: z.string().default('uploads'),
+    /** The website build (with the dashboard in `admin/`) this server also serves; skipped when absent. */
+    // Hosting panels may set it empty; that means the default too.
+    WEB_DIR: z.preprocess((value) => value || undefined, z.string().default('public')),
+    /** `cloudinary://<key>:<secret>@<cloud>`: photos go to Cloudinary instead of UPLOADS_DIR. */
+    CLOUDINARY_URL: z.string().default(''),
 
     MAIL_HOST: z.string().default(''),
     MAIL_PORT: z.coerce.number().int().positive().default(587),
@@ -129,6 +134,9 @@ const schema = z
 
     /** OAuth client ids whose Google tokens are accepted; empty turns Google sign-in off. */
     GOOGLE_CLIENT_IDS: originList,
+
+    /** Claude API key; reads shops' business cards at sign-up. Empty turns that off. */
+    ANTHROPIC_API_KEY: z.preprocess((value) => value || undefined, z.string().optional()),
   })
   .superRefine((env, ctx) => {
     if (env.JWT_ACCESS_SECRET === env.JWT_RESET_SECRET) {

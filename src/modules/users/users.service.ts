@@ -3,6 +3,9 @@ import bcrypt from 'bcrypt';
 import { notFound } from '../../common/http/errors.js';
 import type { UserDocument, UserModel } from './user.model.js';
 
+/** The shop someone signed up as, opened once their email is confirmed. */
+export type PendingShop = { name: string; city: string; address: string };
+
 const PASSWORD_HASH_ROUNDS = 12;
 
 export class UsersService {
@@ -68,22 +71,25 @@ export class UsersService {
     email: string;
     phone: string;
     password: string;
+    pendingShop?: PendingShop | null;
   }): Promise<UserDocument> {
     return this.users.create({
       fullName: input.fullName,
       email: input.email,
       phone: input.phone,
       passwordHash: await hashPassword(input.password),
+      pendingShop: input.pendingShop ?? null,
     });
   }
 
   /** Replaces the details of an account that was never confirmed. */
   async replaceUnverified(
     user: UserDocument,
-    input: { fullName: string; phone: string; password: string },
+    input: { fullName: string; phone: string; password: string; pendingShop?: PendingShop | null },
   ): Promise<UserDocument> {
     user.fullName = input.fullName;
     user.phone = input.phone;
+    user.pendingShop = input.pendingShop ?? null;
     user.passwordHash = await hashPassword(input.password);
     user.hasPassword = true;
     user.passwordVersion += 1;

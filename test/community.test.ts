@@ -107,7 +107,7 @@ describe('garage', () => {
       .expect(200);
     expect(res.body.data.items).toHaveLength(2);
     res = await app.api.get('/api/v1/users/me/cars').set(auth(user.token)).expect(200);
-    expect(res.body.data.items[0]).toEqual(corolla);
+    expect(res.body.data.items[0]).toEqual({ ...corolla, brandName: null, modelName: null });
 
     const six = [2015, 2016, 2017, 2018, 2019, 2020].map((year) => ({ ...corolla, year }));
     res = await app.api
@@ -119,7 +119,8 @@ describe('garage', () => {
 
     for (const bad of [
       { brandId: 'toyota', modelId: 'nope', year: 2016 },
-      { ...corolla, year: 1990 },
+      // Typed years go back to 1950, no further.
+      { ...corolla, year: 1940 },
     ]) {
       res = await app.api
         .put('/api/v1/users/me/cars')

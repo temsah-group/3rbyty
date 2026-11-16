@@ -66,9 +66,10 @@ const fields = {
     .nullish()
     .transform((value) => value ?? null),
   hours: text(100, 'validation.description'),
+  // Up to every make in the list: a shop can work on all of them ("select all").
   brandIds: z
     .array(z.string().refine((id) => findBrand(id) !== undefined, 'validation.car'))
-    .max(30, 'validation.car')
+    .max(200, 'validation.car')
     .default([])
     .transform((list) => [...new Set(list)]),
   categories: z

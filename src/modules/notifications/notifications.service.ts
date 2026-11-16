@@ -1,3 +1,4 @@
+import { brandMatch } from '../catalog/car-ref.js';
 import { Types, type QueryFilter } from 'mongoose';
 
 import { notFound } from '../../common/http/errors.js';
@@ -22,7 +23,16 @@ import type { PushMessage, PushSender } from './push.js';
 export type ListingChange = 'HIDDEN' | 'RESTORED' | 'REMOVED';
 
 /** What a moderator did to a shop; the first param of a `SHOP` notification. */
-export type ShopChange = 'APPROVED' | 'REJECTED' | 'SUSPENDED' | 'RESTORED';
+export type ShopChange =
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'SUSPENDED'
+  | 'RESTORED'
+  | 'VERIFIED'
+  | 'FEATURED';
+
+/** What a moderator did to an account; the first param of an `ACCOUNT` notification. */
+export type AccountChange = 'VERIFIED' | 'RESTORED';
 
 export type NotificationSettings = { fitsMyCar: boolean; priceDrops: boolean; news: boolean };
 
@@ -105,7 +115,7 @@ export class NotificationsService {
   }
 
   /** The token now pushes to [userId], whoever had it before. */
-  async registerDevice(userId: string, token: string, platform: 'ios' | 'android', lang: Lang) {
+  async registerDevice(userId: string, token: string, platform: 'ios' | 'android' | 'web', lang: Lang) {
     await this.devices
       .updateOne(
         { token },
@@ -159,6 +169,7 @@ export class NotificationsService {
           kind: shown.kind,
           ...(shown.partId ? { partId: shown.partId } : {}),
           ...(shown.shopId ? { shopId: shown.shopId } : {}),
+          ...(shown.requestId ? { requestId: shown.requestId } : {}),
         },
       });
     }
@@ -175,19 +186,32 @@ export class NotificationsService {
 
   // ---- What parts tell it ----
 
-  /** A new part: everyone with a car it fits hears of it, not its seller. */
+  /**
+   * A new part: everyone with a car it fits hears of it, not its seller. A
+   * part for every car (oils, tools) would reach everyone, so it notifies no one.
+   */
   async partListed(part: PartDocument): Promise<void> {
-    if (part.isSold || part.fitments.length === 0) return;
+    if (part.isSold || part.fitsAllCars || part.fitments.length === 0) return;
     const fits: QueryFilter<User> = {
       _id: { $ne: part.sellerId },
       'notificationSettings.fitsMyCar': { $ne: false },
       $or: part.fitments.map((fitment) => ({
         cars: {
-          $elemMatch: {
-            brandId: fitment.brandId,
-            modelId: fitment.modelId,
-            year: { $gte: fitment.fromYear, $lte: fitment.toYear },
-          },
+          // Without a model, every owner of the make; a typed model, owners
+          // who typed the same name.
+          $elemMatch: fitment.modelId
+            ? {
+                brandId: fitment.brandId,
+                modelId: fitment.modelId,
+                year: { $gte: fitment.fromYear, $lte: fitment.toYear },
+              }
+            : fitment.modelKey
+              ? {
+                  ...brandMatch(fitment),
+                  modelKey: fitment.modelKey,
+                  ...(fitment.fromYear != null ? { year: { $gte: fitment.fromYear, $lte: fitment.toYear } } : {}),
+                }
+              : brandMatch(fitment),
         },
       })),
     };
@@ -253,6 +277,11 @@ export class NotificationsService {
     this.deliverLater(items);
   }
 
+  /** Tells a user their account was verified or brought back. It opens their account. */
+  async accountNotice(userId: Types.ObjectId, change: AccountChange): Promise<void> {
+    await this.send([userId], 'ACCOUNT', [change], null);
+  }
+
   /**
    * A new review for its seller, or the seller's answer for its author. It
    * opens the shop or part the review is about.
@@ -272,6 +301,18 @@ export class NotificationsService {
         shopId: review.target === 'SHOP' ? review.targetId : null,
       },
     ]);
+    this.deliverLater(items);
+  }
+
+  /**
+   * A part request: [NEW] tells the shops that could answer it ([params]: the
+   * part); [REPLY] tells its buyer a shop answered (the shop, the price, the part).
+   */
+  async requestNotice(userIds: Types.ObjectId[], event: 'NEW' | 'REPLY', requestId: Types.ObjectId, params: string[]): Promise<void> {
+    if (userIds.length === 0) return;
+    const items = await this.notifications.insertMany(
+      userIds.map((userId) => ({ userId, kind: 'PART_REQUEST' as const, params: [event, ...params], requestId })),
+    );
     this.deliverLater(items);
   }
 
@@ -354,18 +395,29 @@ function present(item: NotificationDocument, lang: Lang) {
       }
       case 'SHOP': {
         const [change, name, reason] = params;
-        const key =
-          change === 'APPROVED'
-            ? 'Approved'
-            : change === 'REJECTED'
-              ? 'Rejected'
-              : change === 'SUSPENDED'
-                ? 'Suspended'
-                : 'Restored';
+        const keys = {
+          APPROVED: 'Approved',
+          REJECTED: 'Rejected',
+          SUSPENDED: 'Suspended',
+          RESTORED: 'Restored',
+          VERIFIED: 'Verified',
+          FEATURED: 'Featured',
+        } as const satisfies Record<ShopChange, string>;
+        const key = keys[change as ShopChange] ?? 'Restored';
         return [
           t(lang, `notifications.shop${key}Title`),
           t(lang, `notifications.shop${key}Body`, [name, reason]),
         ];
+      }
+      case 'PART_REQUEST': {
+        const [event, ...rest] = params;
+        return event === 'REPLY'
+          ? [t(lang, 'notifications.requestReplyTitle'), t(lang, 'notifications.requestReplyBody', rest)]
+          : [t(lang, 'notifications.requestNewTitle'), t(lang, 'notifications.requestNewBody', rest)];
+      }
+      case 'ACCOUNT': {
+        const key = params[0] === 'VERIFIED' ? 'Verified' : 'Restored';
+        return [t(lang, `notifications.account${key}Title`), t(lang, `notifications.account${key}Body`)];
       }
       // News and announcements carry their own words: Arabic, then English.
       default:
@@ -381,6 +433,7 @@ function present(item: NotificationDocument, lang: Lang) {
     body,
     partId: item.partId?.toString() ?? null,
     shopId: item.shopId?.toString() ?? null,
+    requestId: item.requestId?.toString() ?? null,
     read: item.read,
     createdAt: item.createdAt,
   };

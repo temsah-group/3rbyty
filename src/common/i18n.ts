@@ -86,6 +86,14 @@ const messages = {
     ar: 'تسجيل الدخول بجوجل مش متاح دلوقتي',
     en: 'Google sign-in is not available right now',
   },
+  'cardScan.off': {
+    ar: 'قراءة الكارت مش متاحة دلوقتي، اكتب البيانات بإيدك',
+    en: 'Card scanning is not available right now. Please type the details',
+  },
+  'cardScan.failed': {
+    ar: 'معرفناش نقرا الكارت، جرّب صورة أوضح أو اكتب البيانات بإيدك',
+    en: "We couldn't read the card. Try a clearer photo or type the details",
+  },
   'auth.googleInvalid': {
     ar: 'تعذر التأكد من حساب جوجل، جرّب تاني',
     en: 'We could not confirm your Google account. Please try again',
@@ -221,6 +229,46 @@ const messages = {
     ar: 'محلك موقوف، تواصل مع الدعم',
     en: 'Your shop is suspended. Contact support',
   },
+  'requests.created': {
+    ar: 'اتبعت طلبك للمحلات، هيوصلك إشعار لما حد يرد',
+    en: 'Your request went to the shops. You will be notified when one answers',
+  },
+  'requests.replied': {
+    ar: 'اتبعت ردك للمشتري',
+    en: 'Your answer was sent to the buyer',
+  },
+  'requests.notFound': {
+    ar: 'الطلب ده مش موجود',
+    en: 'This request does not exist',
+  },
+  'requests.closed': {
+    ar: 'الطلب ده اتقفل',
+    en: 'This request is closed',
+  },
+  'requests.tooMany': {
+    ar: 'عندك {0} طلبات مفتوحة، اقفل واحد قبل ما تبعت جديد',
+    en: 'You have {0} open requests. Close one before sending another',
+  },
+  'requests.shopRequired': {
+    ar: 'طلبات المشترين للمحلات اللي اتوافق عليها بس',
+    en: 'Buyers\' requests are for approved shops only',
+  },
+  'notifications.requestNewTitle': {
+    ar: 'مشتري بيدوّر على قطعة',
+    en: 'A buyer is looking for a part',
+  },
+  'notifications.requestNewBody': {
+    ar: 'حد محتاج "{0}". لو عندك رد بسعرك.',
+    en: 'Someone needs "{0}". If you have it, answer with your price.',
+  },
+  'notifications.requestReplyTitle': {
+    ar: 'رد جديد على طلبك',
+    en: 'New answer to your request',
+  },
+  'notifications.requestReplyBody': {
+    ar: '{0} عنده "{2}" بـ {1} جنيه.',
+    en: '{0} has "{2}" for {1} EGP.',
+  },
   'shops.applied': {
     ar: 'وصلنا طلبك، هنراجعه ونبلغك',
     en: 'We got your application and will let you know',
@@ -260,6 +308,26 @@ const messages = {
   'notifications.shopSuspendedBody': {
     ar: '"{0}" مش ظاهر للمشترين: {1}. تواصل مع الدعم لو عندك استفسار.',
     en: '"{0}" is hidden from buyers: {1}. Contact support with any questions.',
+  },
+  'notifications.shopVerifiedTitle': { ar: 'محلك اتوثّق ✅', en: 'Your shop is verified ✅' },
+  'notifications.shopVerifiedBody': {
+    ar: '"{0}" بقى عليه علامة التوثيق، والمشترين هيثقوا فيه أكتر.',
+    en: '"{0}" now carries the verified badge, so buyers trust it more.',
+  },
+  'notifications.shopFeaturedTitle': { ar: 'محلك بقى مميّز ⭐', en: 'Your shop is featured ⭐' },
+  'notifications.shopFeaturedBody': {
+    ar: '"{0}" هيظهر في أول الصفحة الرئيسية وصفحة المحلات.',
+    en: '"{0}" now shows first on the home page and the shops page.',
+  },
+  'notifications.accountVerifiedTitle': { ar: 'حسابك اتوثّق ✅', en: 'Your account is verified ✅' },
+  'notifications.accountVerifiedBody': {
+    ar: 'إعلاناتك بقى عليها علامة التوثيق، والمشترين هيثقوا فيها أكتر.',
+    en: 'Your listings now carry the verified badge, so buyers trust them more.',
+  },
+  'notifications.accountRestoredTitle': { ar: 'حسابك رجع', en: 'Your account is back' },
+  'notifications.accountRestoredBody': {
+    ar: 'حسابك رجع يشتغل، وإعلاناتك رجعت تظهر للمشترين.',
+    en: 'Your account works again and your listings are shown to buyers again.',
   },
   'notifications.shopRestoredTitle': { ar: 'محلك رجع يظهر', en: 'Your shop is back' },
   'notifications.shopRestoredBody': {

@@ -303,6 +303,8 @@ export function appConfigRoutes(
   settings: SettingsService,
   banner: () => Promise<object | null>,
   offers: () => Promise<object[]> = async () => [],
+  /** Which optional features this server has switched on. */
+  features: { cardScan: boolean } = { cardScan: false },
 ): Router {
   const router = Router();
   router.get('/', async (_req, res) => {
@@ -313,7 +315,7 @@ export function appConfigRoutes(
       banner(),
       offers(),
     ]);
-    send(res, { data: { ...current, announcement, offers: slides } });
+    send(res, { data: { ...current, announcement, offers: slides, features } });
   });
   return router;
 }

@@ -98,7 +98,7 @@ export function searchableText(part: {
   category: PartCategory;
   city: string;
   sellerName?: string;
-  fitments: { brandId: string; modelId: string }[];
+  fitments: { brandId: string; modelId?: string | null; brandName?: string | null; modelName?: string | null }[];
 }): string {
   const words = [
     part.name,
@@ -109,8 +109,8 @@ export function searchableText(part: {
   ];
   for (const fitment of part.fitments) {
     const brand = findBrand(fitment.brandId);
-    const model = findModel(fitment.brandId, fitment.modelId);
-    words.push(brand?.nameAr ?? '', brand?.nameEn ?? '', model?.nameAr ?? '', model?.nameEn ?? '');
+    const model = fitment.modelId ? findModel(fitment.brandId, fitment.modelId) : undefined;
+    words.push(brand?.nameAr ?? '', brand?.nameEn ?? '', model?.nameAr ?? '', model?.nameEn ?? '', fitment.brandName ?? '', fitment.modelName ?? '');
   }
   return normalizeSearchText(words.join(' '));
 }

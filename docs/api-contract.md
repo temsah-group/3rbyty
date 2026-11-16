@@ -403,7 +403,7 @@ out of the list until it opens again; a deleted shop leaves every list.
 | DELETE | `/notifications/:id`            |                                      | 204                                                        |
 | GET    | `/notifications/settings`       |                                      | `{ "fitsMyCar": true, "priceDrops": true, "news": false }` |
 | PUT    | `/notifications/settings`       | same shape                           | same                                                       |
-| PUT    | `/notifications/devices/:token` | `{ "platform": "ios" \| "android" }` | 204; push token, in the `Accept-Language` language         |
+| PUT    | `/notifications/devices/:token` | `{ "platform": "ios" \| "android" \| "web" }` | 204; push token, in the `Accept-Language` language         |
 | DELETE | `/notifications/devices/:token` |                                      | 204; on sign-out                                           |
 
 `title` and `body` come in the request's language. The server sends:
@@ -414,7 +414,11 @@ out of the list until it opens again; a deleted shop leaves every list.
   off;
 - `LISTING` for news about the user's own parts: ✅ hidden, shown again or
   removed by a moderator; 🔜 renewal reminders after 30 days;
-- `SYSTEM` 🔜 for announcements.
+- `SHOP` ✅ for the owner when their shop is approved, rejected, suspended,
+  restored, verified or featured;
+- `ACCOUNT` ✅ when a moderator verifies the user as a seller or restores
+  their account (opens the account page);
+- `SYSTEM` for announcements.
 
 Deleting a part deletes its notifications. Everything put in an inbox is also
 pushed through Firebase to the user's registered phones, in the language the

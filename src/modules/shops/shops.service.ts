@@ -366,6 +366,9 @@ export class ShopsService {
         .exec();
     }
     if (notice) await this.deps.notify(shop.ownerId, notice, shop);
+    // Good news only: taking a badge away is said by the badge going.
+    if (changes.isVerified === true) await this.deps.notify(shop.ownerId, 'VERIFIED', shop);
+    if (changes.isFeatured === true) await this.deps.notify(shop.ownerId, 'FEATURED', shop);
     await this.deps.audit.create({
       adminId: new Types.ObjectId(actor.id),
       adminEmail: actor.email,

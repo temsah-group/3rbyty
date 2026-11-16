@@ -34,7 +34,7 @@ const offerSchema = new Schema(
     titleEn: { type: String, required: true },
     subtitleAr: { type: String, default: '' },
     subtitleEn: { type: String, default: '' },
-    /** A photo uploaded from the dashboard, `/uploads/offers/…`. */
+    /** A photo uploaded from the dashboard: `/uploads/offers/…` or its Cloudinary URL. */
     image: { type: String, required: true },
     condition: { type: String, enum: [...PART_CONDITIONS, null], default: null },
     active: { type: Boolean, default: true },
@@ -69,7 +69,7 @@ const fields = {
   titleEn: text(60),
   subtitleAr: optionalText(90),
   subtitleEn: optionalText(90),
-  image: z.string('validation.required').regex(/^\/uploads\/offers\/[\w-]+\.(?:jpg|png|webp)$/, {
+  image: z.string('validation.required').regex(/^(?:\/uploads\/offers\/|https:\/\/res\.cloudinary\.com\/[\w-]+\/image\/upload\/(?:[\w,]+\/)?v\d+\/3arabity\/offers\/)[\w-]+\.(?:jpg|png|webp)$/, {
     error: 'validation.required',
   }),
   condition: z.enum(PART_CONDITIONS, 'validation.required').nullable(),

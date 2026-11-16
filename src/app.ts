@@ -7,10 +7,12 @@ import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { language } from './middleware/language.js';
 import { adminRoutes } from './modules/admin/admin.routes.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
+import { cardScanRoutes } from './modules/card-scan/card-scan.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { notificationsRoutes } from './modules/notifications/notifications.routes.js';
 import { partsRoutes, uploadRoutes } from './modules/parts/parts.routes.js';
 import { reportsRoutes } from './modules/reports/reports.js';
+import { requestsRoutes } from './modules/requests/requests.js';
 import { reviewsRoutes } from './modules/reviews/reviews.routes.js';
 import { sitemapRoutes } from './modules/seo/sitemap.js';
 import { savedShopsRoutes } from './modules/saved/saved-shops.js';
@@ -20,6 +22,7 @@ import { shopsRoutes } from './modules/shops/shops.routes.js';
 import { appConfigRoutes } from './modules/settings/settings.js';
 import { UPLOADS_ROUTE } from './modules/users/photo-storage.js';
 import { usersRoutes } from './modules/users/users.routes.js';
+import { websiteRoutes } from './web.js';
 
 export const API_PREFIX = '/api/v1';
 
@@ -29,6 +32,9 @@ export function createApp(container: Container) {
 
   app.disable('x-powered-by');
   app.set('trust proxy', env.TRUST_PROXY);
+  // The website and dashboard builds, when deployed next to the API.
+  const website = websiteRoutes(env.WEB_DIR);
+  if (website) app.use(website);
   app.use(helmet());
   app.use(express.json({ limit: '100kb' }));
   app.use(language);
@@ -56,6 +62,7 @@ export function createApp(container: Container) {
 
   const api = Router();
   api.use('/health', healthRoutes(container.connection));
+  api.use('/auth/scan-card', cardScanRoutes(container.cardScanner));
   api.use('/auth', authRoutes(container.auth, container.requireAuth));
   // Before `/users`, which requires a session for everything under it.
   api.use('/users/me/saved', savedRoutes(container.saved, container.requireAuth));
@@ -77,12 +84,14 @@ export function createApp(container: Container) {
   api.use('/sellers', sellersRoutes(container.sellers, container.parts, container.optionalAuth));
   api.use('/notifications', notificationsRoutes(container.notifications, container.requireAuth));
   api.use('/reports', reportsRoutes(container.reports, container.requireAuth));
+  api.use('/requests', requestsRoutes(container.requests, container.requireAuth));
   api.use(
     '/app-config',
     appConfigRoutes(
       container.settings,
       () => container.announcements.banner(),
       () => container.offers.live(),
+      { cardScan: container.cardScanner !== null },
     ),
   );
   app.use(API_PREFIX, api);

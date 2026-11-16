@@ -105,6 +105,33 @@ describe('registration', () => {
   });
 });
 
+describe('signing up as a shop', () => {
+  const shop = { name: 'محل الأمانة', city: 'الإسماعيلية', address: 'شارع الثلاثيني' };
+
+  it('opens the shop, pending review, once the email is confirmed', async () => {
+    await post('/auth/register', { ...signUp, fullName: shop.name, shop }).expect(201);
+    expect(await app.container.models.Shop.countDocuments()).toBe(0);
+
+    await post('/auth/verify-otp', { identifier: EMAIL, otp: app.mailer.lastCode(EMAIL), purpose: 'register' }).expect(200);
+    const token = (await login()).body.data.accessToken;
+    const mine = await app.api.get('/api/v1/shops/mine').set('Authorization', `Bearer ${token}`).expect(200);
+    expect(mine.body.data).toMatchObject({ ...shop, phone: signUp.phone, status: 'PENDING' });
+    const user = await app.container.models.User.findOne({ email: EMAIL }).lean();
+    expect(user!.pendingShop).toBeNull();
+  });
+
+  it('checks the shop details with the sign-up', async () => {
+    const res = await post('/auth/register', { ...signUp, shop: { ...shop, city: 'Atlantis' } });
+    expect(res.status).toBe(400);
+    expect(res.body.errors[0].field).toBe('shop.city');
+  });
+
+  it('opens no shop for a plain sign-up', async () => {
+    await registerAndVerify();
+    expect(await app.container.models.Shop.countDocuments()).toBe(0);
+  });
+});
+
 describe('email confirmation', () => {
   it('confirms with the emailed code, once', async () => {
     await post('/auth/register', signUp).expect(201);
@@ -227,6 +254,32 @@ describe('sign-in and sessions', () => {
     // The leak ends the whole session, including the newest token.
     const newest = await post('/auth/refresh', { refreshToken: refreshed.body.data.refreshToken });
     expect(newest.body.code).toBe('SESSION_REVOKED');
+  });
+
+  it('keeps a used session alive: each refresh moves its end ahead', async () => {
+    await registerAndVerify();
+    const { RefreshToken } = app.container.models;
+    const first = (await login()).body.data;
+
+    // Six of the seven days pass without the site being opened: one is left.
+    await RefreshToken.updateMany({}, { $set: { expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
+
+    const refreshed = await post('/auth/refresh', { refreshToken: first.refreshToken }).expect(200);
+    const [selector] = refreshed.body.data.refreshToken.split('.');
+    const row = await RefreshToken.findOne({ selector }).lean();
+    const daysLeft = (row!.expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    expect(daysLeft).toBeGreaterThan(6.9);
+    expect(daysLeft).toBeLessThanOrEqual(7);
+  });
+
+  it('ends a session that goes unused for its idle days', async () => {
+    await registerAndVerify();
+    const first = (await login()).body.data;
+    await app.container.models.RefreshToken.updateMany({}, { $set: { expiresAt: new Date(Date.now() - 1000) } });
+
+    const res = await post('/auth/refresh', { refreshToken: first.refreshToken });
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('SESSION_EXPIRED');
   });
 
   it('signs out: the access token stops working', async () => {

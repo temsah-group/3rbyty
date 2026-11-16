@@ -1,3 +1,4 @@
+import { brandMatch, modelKeys } from '../catalog/car-ref.js';
 import { Types, type QueryFilter } from 'mongoose';
 
 import { AppError, badRequest, ErrorCode, forbidden } from '../../common/http/errors.js';
@@ -140,7 +141,7 @@ export class PartsService {
   /** Same category or same models, best matches first; never itself or sold. */
   async similar(id: string, limit: number, viewerId?: string): Promise<{ items: PublicPart[] }> {
     const part = await this.find(id);
-    const cars = part.fitments.map((f) => ({ brandId: f.brandId, modelId: f.modelId }));
+    const cars = part.fitments.map((f) => ({ brandId: f.brandId, modelId: f.modelId ?? null }));
     const candidates = await this.parts
       .find({
         _id: { $ne: part._id },
@@ -208,6 +209,9 @@ export class PartsService {
       ...input,
       ...(input.oldPrice === undefined ? {} : { oldPrice: input.oldPrice ?? null }),
     });
+    if (!part.fitsAllCars && part.fitments.length === 0) {
+      throw badRequest(ErrorCode.VALIDATION_FAILED, 'validation.fitments');
+    }
     const seller = await this.users.findById(userId).exec();
     part.set(
       'searchText',
@@ -330,7 +334,7 @@ export class PartsService {
     if (images.length > MAX_PART_PHOTOS) {
       throw badRequest(ErrorCode.TOO_MANY_PHOTOS, 'parts.tooManyPhotos', [MAX_PART_PHOTOS]);
     }
-    const added = images.filter((path) => path.startsWith('/uploads/') && !current.includes(path));
+    const added = images.filter((path) => this.photos.isOwn(path) && !current.includes(path));
     if (added.length === 0) return;
     const owned = await this.uploads
       .countDocuments({ path: { $in: added }, ownerId: new Types.ObjectId(userId) })
@@ -457,18 +461,28 @@ export class PartsService {
   }
 }
 
-/** Fits any of [cars]: one of its fitments covers the car's make, model and year. */
+/**
+ * Fits any of [cars]: it fits every car, or one of its fitments covers the
+ * car's make (every model of it), or its make, model and year. A typed model
+ * matches the same name typed on the part, and a catalog model matches its
+ * own name typed on a part.
+ */
 function fitsAny(cars: CarQuery): QueryFilter<Part> {
+  const inYears = (year: number) => ({ $or: [{ fromYear: null }, { fromYear: { $lte: year }, toYear: { $gte: year } }] });
   return {
-    $or: cars.map((car) => ({
-      fitments: {
-        $elemMatch: {
-          brandId: car.brandId,
-          modelId: car.modelId,
-          fromYear: { $lte: car.year },
-          toYear: { $gte: car.year },
-        },
-      },
-    })),
+    $or: [
+      { fitsAllCars: true },
+      ...cars.flatMap((car) => {
+        const brand = brandMatch(car);
+        const keys = car.modelId ? modelKeys(car.brandId, car.modelId) : car.modelKey ? [car.modelKey] : [];
+        return [
+          { fitments: { $elemMatch: { ...brand, modelId: null, modelKey: null } } },
+          ...(car.modelId
+            ? [{ fitments: { $elemMatch: { brandId: car.brandId, modelId: car.modelId, fromYear: { $lte: car.year }, toYear: { $gte: car.year } } } }]
+            : []),
+          ...(keys.length ? [{ fitments: { $elemMatch: { ...brand, modelKey: { $in: keys }, ...inYears(car.year) } } }] : []),
+        ];
+      }),
+    ],
   };
 }

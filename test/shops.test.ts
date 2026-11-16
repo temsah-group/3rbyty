@@ -36,6 +36,13 @@ async function inbox(token: string) {
 }
 
 describe('applying for a shop', () => {
+  it('can work on every make in the list ("select all")', async () => {
+    const owner = await signUp(app, 'allmakes@example.com');
+    const { carBrands } = await import('../src/modules/catalog/catalog.js');
+    const res = await app.api.post('/api/v1/shops').set(auth(owner.token)).send(shopInput({ brandIds: carBrands().map((b) => b.id) }));
+    expect(res.status).toBe(201);
+  });
+
   it('applies once, stays hidden until approved, and checks its fields', async () => {
     const owner = await signUp(app, 'owner@example.com', 'صاحب محل');
     expect((await app.api.get('/api/v1/shops/mine').set(auth(owner.token))).body.data).toBeNull();

@@ -482,7 +482,9 @@ export class ModerationService {
       ...presentAccount(user),
       cars: user.cars.map((car) => ({
         brandId: car.brandId,
-        modelId: car.modelId,
+        brandName: car.brandName ?? null,
+        modelId: car.modelId ?? null,
+        modelName: car.modelName ?? null,
         year: car.year,
       })),
       parts: { forSale, sold, hidden, total: partIds.length },
@@ -534,6 +536,13 @@ export class ModerationService {
         )
         .exec();
       await this.deps.ownerSuspended?.(id, false);
+    }
+    // A suspended user is signed out, so only good news reaches an inbox.
+    if (changes.isVerifiedSeller === true) {
+      await this.deps.notifications.accountNotice(userId, 'VERIFIED');
+    }
+    if (changes.accountStatus === AccountStatus.ACTIVE) {
+      await this.deps.notifications.accountNotice(userId, 'RESTORED');
     }
     const action =
       changes.accountStatus === AccountStatus.SUSPENDED

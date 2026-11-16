@@ -35,22 +35,27 @@ import { createOfferModel, OffersService } from './modules/offers/offers.js';
 import { createSettingsModel, SettingsService, supportInput } from './modules/settings/settings.js';
 import { createContactModel, createReviewModel } from './modules/reviews/review.model.js';
 import { ReviewsService } from './modules/reviews/reviews.service.js';
+import { ClaudeCardScanner, type CardScanner } from './modules/card-scan/card-scan.js';
+import { createPartRequestModel, createRequestReplyModel, RequestsService } from './modules/requests/requests.js';
 import { createShopModel } from './modules/shops/shop.model.js';
+import { shopInputSchema } from './modules/shops/shops.schemas.js';
 import { ShopsService } from './modules/shops/shops.service.js';
 import { createUserModel } from './modules/users/user.model.js';
 import { AccountService } from './modules/users/account.service.js';
-import { PhotoStorage } from './modules/users/photo-storage.js';
+import { createPhotoStorage } from './modules/users/photo-storage.js';
 import { UsersService } from './modules/users/users.service.js';
 
 /** Builds every service by hand, so dependencies stay visible. Tests swap the mailer. */
 export function createContainer(
   connection: Connection,
   env: Env,
-  overrides: { mailer?: Mailer; google?: GoogleVerifier; push?: PushSender } = {},
+  overrides: { mailer?: Mailer; google?: GoogleVerifier; push?: PushSender; cardScanner?: CardScanner | null } = {},
 ) {
   const models = {
     User: createUserModel(connection),
     RefreshToken: createRefreshTokenModel(connection),
+    PartRequest: createPartRequestModel(connection),
+    RequestReply: createRequestReplyModel(connection),
     Otp: createOtpModel(connection),
     Part: createPartModel(connection),
     Upload: createUploadModel(connection),
@@ -83,8 +88,11 @@ export function createContainer(
   const google =
     overrides.google ??
     (env.GOOGLE_CLIENT_IDS.length > 0 ? new GoogleTokenVerifier(env.GOOGLE_CLIENT_IDS) : null);
-  const auth = new AuthService(users, sessions, tokens, otp, mailer, env, google);
-  const photos = new PhotoStorage(env.UPLOADS_DIR);
+  const auth = new AuthService(users, sessions, tokens, otp, mailer, env, google, (userId, phone, shop) =>
+    // `shops` is made below; this only runs on a request.
+    shops.apply(userId, shopInputSchema.parse({ ...shop, phone })),
+  );
+  const photos = createPhotoStorage(env);
   const notifications = new NotificationsService(
     models.Notification,
     models.Device,
@@ -142,6 +150,12 @@ export function createContainer(
   const reports = new ReportsService(models.Report, models.Part, models.User, (id) =>
     reviews.authorOf(id),
   );
+  const requests = new RequestsService({
+    requests: models.PartRequest,
+    replies: models.RequestReply,
+    shops: models.Shop,
+    notifications,
+  });
   // Everything else a deleted account leaves behind goes with it.
   const account = new AccountService(
     users,
@@ -149,7 +163,7 @@ export function createContainer(
     sessions,
     models.Otp,
     photos,
-    [parts, saved, savedShops, notifications, reports, shops, reviews],
+    [parts, saved, savedShops, notifications, reports, shops, reviews, requests],
     (idToken, googleId) => auth.isGoogleAccount(idToken, googleId),
   );
   const settings = new SettingsService(
@@ -202,6 +216,13 @@ export function createContainer(
     tokens,
     otp,
     auth,
+    // Null when no Claude API key is set: the sign-up form has no scan button.
+    cardScanner:
+      overrides.cardScanner !== undefined
+        ? overrides.cardScanner
+        : env.ANTHROPIC_API_KEY
+          ? new ClaudeCardScanner(env.ANTHROPIC_API_KEY)
+          : null,
     photos,
     parts,
     saved,
@@ -210,6 +231,7 @@ export function createContainer(
     shops,
     reviews,
     reports,
+    requests,
     notifications,
     account,
     adminAuth,

@@ -8,12 +8,21 @@ import {
 
 import { PART_CATEGORIES, PART_CONDITIONS } from '../catalog/catalog.js';
 
+/**
+ * A car the part fits. Without a model it fits every model of the make (a
+ * shop listing, say, starters for all Toyotas); years go with a model only.
+ */
 const fitmentSchema = new Schema(
   {
     brandId: { type: String, required: true },
-    modelId: { type: String, required: true },
-    fromYear: { type: Number, required: true },
-    toYear: { type: Number, required: true },
+    modelId: { type: String, default: null },
+    /** A make or model typed by hand (not in the catalog), and the keys they match by. */
+    brandName: { type: String, default: null },
+    brandKey: { type: String, default: null },
+    modelName: { type: String, default: null },
+    modelKey: { type: String, default: null },
+    fromYear: { type: Number, default: null },
+    toYear: { type: Number, default: null },
   },
   { _id: false },
 );
@@ -36,6 +45,8 @@ const partSchema = new Schema(
     /** Public paths (/uploads/parts/…) or outside URLs, cover first. */
     images: { type: [String], default: [] },
     fitments: { type: [fitmentSchema], default: [] },
+    /** Fits every car (oils, wipers, tools…); then [fitments] may be empty. */
+    fitsAllCars: { type: Boolean, default: false },
     city: { type: String, required: true },
     /** The number buyers call for this part, E.164. */
     phone: { type: String, required: true },

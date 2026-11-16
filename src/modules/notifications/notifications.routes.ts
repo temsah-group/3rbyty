@@ -14,7 +14,7 @@ const settingsSchema = z.strictObject({
 });
 
 const deviceSchema = z.strictObject({
-  platform: z.enum(['ios', 'android'], 'validation.required'),
+  platform: z.enum(['ios', 'android', 'web'], 'validation.required'),
 });
 
 /** A push token: long, but never this long. */

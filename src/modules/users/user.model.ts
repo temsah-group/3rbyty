@@ -16,7 +16,12 @@ export type AccountStatus = (typeof AccountStatus)[keyof typeof AccountStatus];
 const carSchema = new Schema(
   {
     brandId: { type: String, required: true },
-    modelId: { type: String, required: true },
+    /** Null for a model typed by hand, with its name and key below. */
+    modelId: { type: String, default: null },
+    brandName: { type: String, default: null },
+    brandKey: { type: String, default: null },
+    modelName: { type: String, default: null },
+    modelKey: { type: String, default: null },
     year: { type: Number, required: true },
   },
   { _id: false },
@@ -49,6 +54,14 @@ const userSchema = new Schema(
       default: AccountStatus.ACTIVE,
     },
     emailVerifiedAt: { type: Date, default: null },
+    /**
+     * The shop someone signed up as, kept until they confirm their email;
+     * then it is opened for them (pending review) and this is cleared.
+     */
+    pendingShop: {
+      type: new Schema({ name: String, city: String, address: String }, { _id: false }),
+      default: null,
+    },
     profilePhotoUrl: { type: String, default: null },
     /** Identity checked by 3arabity; shown as a badge on their parts. */
     isVerifiedSeller: { type: Boolean, default: false },

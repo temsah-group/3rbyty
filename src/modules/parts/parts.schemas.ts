@@ -1,30 +1,53 @@
 import { z } from 'zod';
 
 import { phone } from '../auth/auth.schemas.js';
-import {
-  findModel,
-  isGovernorate,
-  modelYears,
-  PART_CATEGORIES,
-  PART_CONDITIONS,
-} from '../catalog/catalog.js';
+import { carKey, OLDEST_YEAR, lastYear, listYears, resolveCar } from '../catalog/car-ref.js';
+import { isGovernorate, PART_CATEGORIES, PART_CONDITIONS } from '../catalog/catalog.js';
 
 export const MAX_PART_PHOTOS = 8;
 const MAX_FITMENTS = 20;
 
+/**
+ * A make alone (every model of it), or a make and model with years. The make
+ * or model may be typed when not in the catalog (`brandId: "other"` with a
+ * `brandName`, or a `modelName`). Years left out mean all of them: for a
+ * catalog model from 1998 (or its first year) on; years may go back to 1950.
+ */
 const fitment = z
   .strictObject({
     brandId: z.string('validation.fitment'),
-    modelId: z.string('validation.fitment'),
-    fromYear: z.number('validation.fitment').int('validation.fitment'),
-    toYear: z.number('validation.fitment').int('validation.fitment'),
+    brandName: z.string('validation.fitment').max(60, 'validation.fitment').nullish(),
+    modelId: z.string('validation.fitment').nullish(),
+    modelName: z.string('validation.fitment').max(60, 'validation.fitment').nullish(),
+    fromYear: z.number('validation.fitment').int('validation.fitment').nullish(),
+    toYear: z.number('validation.fitment').int('validation.fitment').nullish(),
   })
-  .refine((value) => {
-    const model = findModel(value.brandId, value.modelId);
-    if (!model) return false;
-    const [first, last] = modelYears(model);
-    return value.fromYear <= value.toYear && value.fromYear >= first && value.toYear <= last;
-  }, 'validation.fitment');
+  .transform((value, ctx) => {
+    const car = resolveCar(value);
+    if (!car) {
+      ctx.addIssue({ code: 'custom', message: 'validation.fitment' });
+      return z.NEVER;
+    }
+    const { model, ...ref } = car;
+    // A make alone has no years.
+    if (!ref.modelId && !ref.modelKey) return { ...ref, fromYear: null, toYear: null };
+    const last = lastYear(model);
+    let fromYear = value.fromYear ?? null;
+    let toYear = value.toYear ?? null;
+    if (model) {
+      fromYear ??= listYears(model)[0];
+      toYear ??= last;
+    } else if ((fromYear === null) !== (toYear === null)) {
+      // A typed model: both years, or neither (all of them).
+      fromYear ??= toYear;
+      toYear ??= fromYear;
+    }
+    if (fromYear !== null && toYear !== null && (fromYear > toYear || fromYear < OLDEST_YEAR || toYear > last)) {
+      ctx.addIssue({ code: 'custom', message: 'validation.fitment' });
+      return z.NEVER;
+    }
+    return { ...ref, fromYear, toYear };
+  });
 
 /** A photo path this server stored, or an outside https URL (sample data). */
 const image = z
@@ -61,10 +84,8 @@ const fields = {
   partNumber: optionalText(40, 'validation.required'),
   description: optionalText(1000, 'validation.description'),
   images: z.array(image, 'validation.photos').min(1, 'validation.photos'),
-  fitments: z
-    .array(fitment, 'validation.fitments')
-    .min(1, 'validation.fitments')
-    .max(MAX_FITMENTS, 'validation.fitments'),
+  fitments: z.array(fitment, 'validation.fitments').max(MAX_FITMENTS, 'validation.fitments'),
+  fitsAllCars: z.boolean(),
   city: z.string('validation.city').refine(isGovernorate, 'validation.city'),
   phone,
 };
@@ -73,8 +94,13 @@ const oldPriceAbovePrice = (value: { price?: number; oldPrice?: number | null })
   value.oldPrice == null || value.price === undefined || value.oldPrice > value.price;
 
 export const createPartSchema = z
-  .strictObject(fields)
-  .refine(oldPriceAbovePrice, { message: 'validation.oldPrice', path: ['oldPrice'] });
+  .strictObject({ ...fields, fitments: fields.fitments.default([]), fitsAllCars: fields.fitsAllCars.default(false) })
+  .refine(oldPriceAbovePrice, { message: 'validation.oldPrice', path: ['oldPrice'] })
+  // A part fits every car, or at least one make.
+  .refine((value) => value.fitsAllCars || value.fitments.length > 0, {
+    message: 'validation.fitments',
+    path: ['fitments'],
+  });
 
 /** Edits send only what changed. */
 export const updatePartSchema = z
@@ -88,18 +114,35 @@ export const contactSchema = z.strictObject({
   channel: z.enum(['CALL', 'WHATSAPP'], 'validation.required'),
 });
 
-/** `toyota:corolla:2016,hyundai:elantra:2015` */
+/**
+ * `toyota:corolla:2016,hyundai:elantra:2015`. A typed make or model is its
+ * name after `~`: `toyota:~كراون:1999`, `~بروتون:~ساجا:2004`.
+ */
 const cars = z.string().transform((value, ctx) => {
   const list = value
     .split(',')
     .filter(Boolean)
     .map((item) => {
-      const [brandId, modelId, year] = item.split(':');
-      return { brandId: brandId ?? '', modelId: modelId ?? '', year: Number(year) };
+      const [brand = '', model = '', year] = item.split(':');
+      const typedBrand = brand.startsWith('~');
+      const typedModel = model.startsWith('~');
+      return {
+        brandId: typedBrand ? 'other' : brand,
+        brandKey: typedBrand ? carKey(brand.slice(1)) : null,
+        modelId: typedModel ? null : model,
+        modelKey: typedModel ? carKey(model.slice(1)) : null,
+        year: Number(year),
+      };
     });
   if (
     list.length > 5 ||
-    list.some((car) => !car.brandId || !car.modelId || !Number.isInteger(car.year))
+    list.some(
+      (car) =>
+        !car.brandId ||
+        (car.brandId === 'other' && !car.brandKey) ||
+        (!car.modelId && !car.modelKey) ||
+        !Number.isInteger(car.year),
+    )
   ) {
     ctx.addIssue({ code: 'custom', message: 'validation.query' });
     return z.NEVER;

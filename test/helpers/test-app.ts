@@ -9,6 +9,7 @@ import request from 'supertest';
 import { createApp } from '../../src/app.js';
 import { loadEnv } from '../../src/config/env.js';
 import { createContainer, type Container } from '../../src/container.js';
+import type { CardDetails, CardScanner } from '../../src/modules/card-scan/card-scan.js';
 import type { GoogleIdentity, GoogleVerifier } from '../../src/modules/auth/google.js';
 import type { Mail, Mailer } from '../../src/modules/mail/mailer.js';
 import type { PushMessage, PushSender } from '../../src/modules/notifications/push.js';
@@ -56,11 +57,25 @@ export class CapturingPush implements PushSender {
   }
 }
 
+/** Stands in for Claude: answers [result], or throws when [fail] is set. */
+export class FakeCardScanner implements CardScanner {
+  result: CardDetails = { shopName: null, phone: null, city: null, address: null };
+  fail = false;
+  scanned: string[] = [];
+
+  async scan(_image: Buffer, mediaType: string): Promise<CardDetails> {
+    this.scanned.push(mediaType);
+    if (this.fail) throw new Error('scanner down');
+    return this.result;
+  }
+}
+
 export type TestApp = {
   api: ReturnType<typeof request>;
   mailer: CapturingMailer;
   google: FakeGoogle;
   push: CapturingPush;
+  cardScanner: FakeCardScanner;
   container: Container;
   reset(): Promise<void>;
   close(): Promise<void>;
@@ -83,7 +98,8 @@ export async function startTestApp(): Promise<TestApp> {
   const mailer = new CapturingMailer();
   const google = new FakeGoogle();
   const push = new CapturingPush();
-  const container = createContainer(connection, env, { mailer, google, push });
+  const cardScanner = new FakeCardScanner();
+  const container = createContainer(connection, env, { mailer, google, push, cardScanner });
   await Promise.all(Object.values(container.models).map((model) => model.syncIndexes()));
   const api = request(createApp(container));
 
@@ -92,12 +108,15 @@ export async function startTestApp(): Promise<TestApp> {
     mailer,
     google,
     push,
+    cardScanner,
     container,
     async reset() {
       await container.notifications.flush();
       mailer.sent.length = 0;
       push.sent.length = 0;
       push.dead.clear();
+      cardScanner.fail = false;
+      cardScanner.scanned.length = 0;
       // Every collection, so each test starts empty.
       await Promise.all(
         Object.values(container.connection.collections).map((collection) =>

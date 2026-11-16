@@ -122,7 +122,7 @@ describe('listing a part', () => {
 
     const badCar = await post(
       pads([photo], {
-        fitments: [{ brandId: 'toyota', modelId: 'corolla', fromYear: 1990, toYear: 2000 }],
+        fitments: [{ brandId: 'toyota', modelId: 'corolla', fromYear: 1940, toYear: 2000 }],
       }),
     );
     expect(badCar.status).toBe(400);
@@ -282,6 +282,101 @@ describe('finding parts', () => {
       'PART_NOT_FOUND',
     );
     expect((await app.api.get('/api/v1/parts/nope')).status).toBe(404);
+  });
+});
+
+describe('a shop listing for a whole make, or for every car', () => {
+  async function publish(token: string, extra: object) {
+    const image = await upload(token);
+    return app.api.post('/api/v1/parts').set(auth(token)).send(pads([image], extra));
+  }
+
+  it('fits every model of a make when no model is given, and every car when asked', async () => {
+    const shop = await account('shop@example.com');
+    const starters = await publish(shop.token, { name: 'مارش', fitments: [{ brandId: 'toyota' }, { brandId: 'hyundai' }] });
+    expect(starters.status).toBe(201);
+    expect(starters.body.data.fitments).toEqual([
+      { brandId: 'toyota', modelId: null, brandName: null, modelName: null, fromYear: null, toYear: null },
+      { brandId: 'hyundai', modelId: null, brandName: null, modelName: null, fromYear: null, toYear: null },
+    ]);
+    const oil = await publish(shop.token, { name: 'زيت موتور', fitments: [], fitsAllCars: true });
+    expect(oil.status).toBe(201);
+    expect(oil.body.data.fitsAllCars).toBe(true);
+    // A model without years takes all of its years.
+    const pads2 = await publish(shop.token, { fitments: [{ brandId: 'toyota', modelId: 'corolla' }] });
+    expect(pads2.body.data.fitments[0].fromYear).toBeTypeOf('number');
+
+    const ids = (items: { id: string }[]) => items.map((p) => p.id).sort();
+    // Any Toyota takes the starter and the oil; a Kia only the oil.
+    expect(ids((await list('?cars=toyota:yaris:2012')).items)).toEqual(ids([starters.body.data, oil.body.data]));
+    expect(ids((await list('?cars=kia:cerato:2018')).items)).toEqual([oil.body.data.id]);
+  });
+
+  it('needs a car or "every car"', async () => {
+    const shop = await account('shop@example.com');
+    const none = await publish(shop.token, { fitments: [] });
+    expect(none.status).toBe(400);
+    expect(none.body.errors[0].field).toBe('fitments');
+    const unknown = await publish(shop.token, { fitments: [{ brandId: 'not-a-make' }] });
+    expect(unknown.status).toBe(400);
+
+    // Turning "every car" off on a part with no cars is refused too.
+    const oil = await publish(shop.token, { fitments: [], fitsAllCars: true });
+    const off = await app.api.patch(`/api/v1/parts/${oil.body.data.id}`).set(auth(shop.token)).send({ fitsAllCars: false });
+    expect(off.status).toBe(400);
+  });
+});
+
+describe('cars not in the list, and older years', () => {
+  async function publish(token: string, extra: object) {
+    const image = await upload(token);
+    return app.api.post('/api/v1/parts').set(auth(token)).send(pads([image], extra));
+  }
+  const ids = (items: { id: string }[]) => items.map((p) => p.id).sort();
+
+  it('takes a typed model or make, and finds it by the same name typed in a search', async () => {
+    const shop = await account('shop@example.com');
+    const crown = await publish(shop.token, { name: 'رفرف', fitments: [{ brandId: 'toyota', modelName: ' كراون ' }] });
+    expect(crown.status).toBe(201);
+    expect(crown.body.data.fitments[0]).toMatchObject({ brandId: 'toyota', modelId: null, modelName: 'كراون', fromYear: null });
+    const saga = await publish(shop.token, { name: 'فانوس', fitments: [{ brandId: 'other', brandName: 'بروتون', modelName: 'ساجا', fromYear: 2000, toYear: 2008 }] });
+    expect(saga.status).toBe(201);
+
+    expect(ids((await list(`?cars=${encodeURIComponent('toyota:~كراون:1999')}`)).items)).toEqual([crown.body.data.id]);
+    expect(ids((await list(`?cars=${encodeURIComponent('~بروتون:~ساجا:2004')}`)).items)).toEqual([saga.body.data.id]);
+    // Outside its years, or another model of the make: not a match.
+    expect((await list(`?cars=${encodeURIComponent('~بروتون:~ساجا:2012')}`)).items).toHaveLength(0);
+    expect((await list('?cars=toyota:corolla:2016')).items).toHaveLength(0);
+    // The typed names are searchable words too.
+    expect(ids((await list(`?q=${encodeURIComponent('كراون')}`)).items)).toEqual([crown.body.data.id]);
+
+    // A typed make needs its name.
+    expect((await publish(shop.token, { fitments: [{ brandId: 'other' }] })).status).toBe(400);
+  });
+
+  it('lists models from 1998, and takes older years typed back to 1950', async () => {
+    const shop = await account('shop@example.com');
+    // The catalog has the Corolla from 2008; with no years given it covers 1998 on.
+    const pads1 = await publish(shop.token, { fitments: [{ brandId: 'toyota', modelId: 'corolla' }] });
+    expect(pads1.body.data.fitments[0].fromYear).toBe(1998);
+    expect(ids((await list('?cars=toyota:corolla:2001')).items)).toEqual([pads1.body.data.id]);
+    expect((await publish(shop.token, { fitments: [{ brandId: 'toyota', modelId: 'corolla', fromYear: 1985, toYear: 1990 }] })).status).toBe(201);
+    expect((await publish(shop.token, { fitments: [{ brandId: 'toyota', modelId: 'corolla', fromYear: 1940, toYear: 1990 }] })).status).toBe(400);
+  });
+
+  it('keeps typed cars and old years in the garage', async () => {
+    const owner = await account('owner@example.com');
+    const put = (items: object[]) => app.api.put('/api/v1/users/me/cars').set(auth(owner.token)).send({ items });
+    const saved = await put([
+      { brandId: 'toyota', modelId: 'corolla', year: 2001 },
+      { brandId: 'toyota', modelName: 'كراون', year: 1996 },
+      { brandId: 'other', brandName: 'بروتون', modelName: 'ساجا', year: 2004 },
+    ]);
+    expect(saved.status).toBe(200);
+    expect(saved.body.data.items[1]).toEqual({ brandId: 'toyota', brandName: null, modelId: null, modelName: 'كراون', year: 1996 });
+    expect((await put([{ brandId: 'toyota', modelId: 'corolla', year: 1940 }])).status).toBe(400);
+    // A car needs a model, from the list or typed.
+    expect((await put([{ brandId: 'toyota', year: 2010 }])).status).toBe(400);
   });
 });
 

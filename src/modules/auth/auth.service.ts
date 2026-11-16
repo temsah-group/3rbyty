@@ -16,7 +16,7 @@ import type { Mailer } from '../mail/mailer.js';
 import { codeEmail } from '../mail/templates.js';
 import { AccountStatus, type UserDocument } from '../users/user.model.js';
 import { presentUser } from '../users/user.presenter.js';
-import type { UsersService } from '../users/users.service.js';
+import type { PendingShop, UsersService } from '../users/users.service.js';
 import type {
   GoogleInput,
   LoginInput,
@@ -46,6 +46,8 @@ export class AuthService {
     private readonly env: Pick<Env, 'REFRESH_TOKEN_DAYS' | 'REFRESH_TOKEN_REMEMBER_DAYS'>,
     /** Null when no Google client ids are configured. */
     private readonly google: GoogleVerifier | null = null,
+    /** Opens the shop someone signed up as, once their email is confirmed. */
+    private readonly openShop: ((userId: string, phone: string, shop: PendingShop) => Promise<unknown>) | null = null,
   ) {}
 
   /**
@@ -60,7 +62,12 @@ export class AuthService {
       throw conflict(ErrorCode.EMAIL_ALREADY_REGISTERED, 'auth.emailTaken');
     }
 
-    const details = { fullName: input.fullName, phone: input.phone, password: input.password };
+    const details = {
+      fullName: input.fullName,
+      phone: input.phone,
+      password: input.password,
+      pendingShop: input.shop ?? null,
+    };
     const user = existing
       ? await this.users.replaceUnverified(existing, details)
       : await this.users.create({ ...details, email });
@@ -213,9 +220,30 @@ export class AuthService {
 
     if (input.purpose === OtpPurpose.REGISTER) {
       await this.users.markEmailVerified(user);
+      await this.openPendingShop(user);
       return {};
     }
     return { resetToken: this.tokens.signPasswordReset(user.id as string, user.passwordVersion) };
+  }
+
+  /**
+   * Someone who signed up as a shop is a shop from their first sign-in: it
+   * opens now, pending review. A failure leaves the details for next time
+   * rather than failing the confirmation.
+   */
+  private async openPendingShop(user: UserDocument): Promise<void> {
+    const shop = user.pendingShop;
+    if (!shop?.name || !shop.city || !shop.address || !this.openShop) return;
+    try {
+      await this.openShop(user.id as string, user.phone, { name: shop.name, city: shop.city, address: shop.address });
+      user.pendingShop = null;
+      await user.save();
+    } catch (error) {
+      logger.warn('Could not open the shop from sign-up', {
+        userId: user.id as string,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async resetPassword(input: ResetPasswordInput): Promise<void> {
