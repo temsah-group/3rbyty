@@ -111,6 +111,7 @@ function Overview() {
     '/account/shop': tr('صفحة محلك وصوره وبياناته', "Your shop's page, photos and details"),
     '/account/reviews': tr('شوف رأي المشترين ورد عليهم', 'See what buyers say and reply'),
     '/notifications': tr('كل جديد عن إعلاناتك وحسابك', 'News about your listings and account'),
+    '/app': tr('حط عربيتي على شاشة موبايلك زي التطبيق', 'Put 3arabity on your home screen like an app'),
     '/account/requests': tr('القطع اللي طلبتها وردود المحلات عليها', 'Parts you asked for and the shops\' answers'),
     '/account/shop-requests': tr('مشترين بيدوّروا على قطع، رد بسعرك', 'Buyers looking for parts: answer with your price'),
   };

@@ -1,4 +1,4 @@
-import { Bell, BellRing, HelpCircle, Inbox, KeyRound, LogOut, MessageSquareReply, Package, Star, Store, Trash2, UserRound } from 'lucide-react';
+import { Bell, BellRing, HelpCircle, Inbox, KeyRound, LogOut, MessageSquareReply, Package, Smartphone, Star, Store, Trash2, UserRound } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
@@ -38,6 +38,7 @@ export function useAccountLinks() {
         label: user?.hasPassword ? tr('غيّر كلمة السر', 'Change password') : tr('اعمل كلمة سر', 'Set a password'),
       },
       { to: '/notifications/settings', icon: <BellRing className={icon} />, label: tr('إعدادات الإشعارات', 'Notification settings') },
+      { to: '/app', icon: <Smartphone className={icon} />, label: tr('نزّل التطبيق', 'Get the app') },
     ],
   };
 }

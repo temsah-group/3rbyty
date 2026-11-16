@@ -11,7 +11,7 @@ import { Button } from './ui';
 const PAGES_BEFORE = 3;
 const SECONDS_BEFORE = 40;
 /** Where the banner would get in the way of something the visitor is doing. */
-const QUIET_PATHS = /^\/(login|register|verify|forgot-password|reset-password|sell)/;
+const QUIET_PATHS = /^\/(app$|login|register|verify|forgot-password|reset-password|sell)/;
 
 /**
  * A small card above the bottom bar: "Add 3arabity to your home screen".

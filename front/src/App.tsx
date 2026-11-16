@@ -33,6 +33,7 @@ const MyRequests = lazy(() => import('@/pages/requests/MyRequests'));
 const RequestDetails = lazy(() => import('@/pages/requests/RequestDetails'));
 const Notifications = lazy(() => import('@/pages/notifications/Notifications'));
 const NotificationSettings = lazy(() => import('@/pages/notifications/NotificationSettings'));
+const InstallApp = lazy(() => import('@/pages/InstallApp'));
 const Help = lazy(() => import('@/pages/Help').then((m) => ({ default: m.Help })));
 const Legal = lazy(() => import('@/pages/Help').then((m) => ({ default: m.Legal })));
 const NotFound = lazy(() => import('@/pages/NotFound'));
@@ -81,6 +82,7 @@ const router = createBrowserRouter([
           { path: '/shops/:id', element: page(<ShopPage />) },
           { path: '/saved', element: auth(page(<Saved />)) },
           { path: '/help', element: page(<Help />) },
+          { path: '/app', element: page(<InstallApp />) },
           { path: '/legal/:doc', element: page(<Legal />) },
 
           { path: '/login', element: guest(page(<Login />)) },

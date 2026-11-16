@@ -218,6 +218,7 @@ function Footer() {
           <Link to="/sell" className="hover:text-white">{tr('بيع قطعة', 'Sell a part')}</Link>
         </div>
         <div className="flex flex-col gap-2 text-sm">
+          <Link to="/app" className="hover:text-white">{tr('نزّل التطبيق', 'Get the app')}</Link>
           <Link to="/help" className="hover:text-white">{tr('المساعدة والأسئلة', 'Help & FAQ')}</Link>
           <Link to="/legal/terms" className="hover:text-white">{tr('شروط الاستخدام', 'Terms of use')}</Link>
           <Link to="/legal/privacy" className="hover:text-white">{tr('سياسة الخصوصية', 'Privacy policy')}</Link>
