@@ -48,6 +48,12 @@ async function main() {
     }
   });
   const container = createContainer(connection, env);
+  // The daily notification email goes out once its hour (Cairo) has come.
+  const digest = () =>
+    container.notifications.digestIfDue().catch((error: unknown) => {
+      logger.error('Daily notification email failed', { error: error instanceof Error ? error.message : String(error) });
+    });
+  setInterval(digest, 15 * 60_000).unref();
   // Unique indexes (one account per email) must exist before the first write.
   await withRetry('sync indexes', () =>
     Promise.all(Object.values(container.models).map((model) => model.syncIndexes())),

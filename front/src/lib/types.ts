@@ -266,6 +266,8 @@ export interface NotificationSettings {
   fitsMyCar: boolean;
   priceDrops: boolean;
   news: boolean;
+  /** Notifications by email too; on unless turned off. */
+  email: boolean;
 }
 
 /** A car in the garage: from the list, or with its make or model typed (see [Fitment]). */

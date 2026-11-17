@@ -73,6 +73,8 @@ const userSchema = new Schema(
       fitsMyCar: { type: Boolean, default: true },
       priceDrops: { type: Boolean, default: true },
       news: { type: Boolean, default: false },
+      /** Notifications by email too (to a confirmed address); on unless turned off. */
+      email: { type: Boolean, default: true },
     },
 
     // Brute-force guard for password sign-in.

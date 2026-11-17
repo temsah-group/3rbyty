@@ -6,11 +6,13 @@ import { pageQuerySchema } from '../../common/http/paging.js';
 import { send } from '../../common/http/response.js';
 import { parseBody, parseQuery } from '../../common/http/validate.js';
 import type { NotificationsService } from './notifications.service.js';
+import { emailOffPage } from './email.js';
 
 const settingsSchema = z.strictObject({
   fitsMyCar: z.boolean('validation.required'),
   priceDrops: z.boolean('validation.required'),
   news: z.boolean('validation.required'),
+  email: z.boolean('validation.required').optional(),
 });
 
 const deviceSchema = z.strictObject({
@@ -73,5 +75,28 @@ export function notificationsRoutes(
     res.status(204).end();
   });
 
+  return router;
+}
+
+/**
+ * `/email-off?u=&s=`, the link at the bottom of every notification email:
+ * GET (someone clicking it) shows a page; POST is the one-click unsubscribe
+ * mail apps send. No sign-in: the link's signature is the proof.
+ */
+export function emailOffRoutes(notifications: NotificationsService, siteUrl: string): Router {
+  const router = Router();
+  const params = (req: { query: Record<string, unknown> }) => ({
+    userId: typeof req.query.u === 'string' ? req.query.u : '',
+    signature: typeof req.query.s === 'string' ? req.query.s : '',
+  });
+  router.get('/', async (req, res) => {
+    const { userId, signature } = params(req);
+    const done = await notifications.emailOff(userId, signature);
+    res.status(done ? 200 : 400).type('html').send(emailOffPage(req.lang, siteUrl, done));
+  });
+  router.post('/', async (req, res) => {
+    const { userId, signature } = params(req);
+    res.status((await notifications.emailOff(userId, signature)) ? 200 : 400).end();
+  });
   return router;
 }

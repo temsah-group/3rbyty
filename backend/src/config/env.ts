@@ -115,6 +115,8 @@ const schema = z
     MAIL_USER: z.string().default(''),
     MAIL_PASS: z.string().default(''),
     MAIL_FROM: z.string().default('عربيتي <follow@3rbyty.com>'),
+    /** Notification emails a day at most (codes always go out); under the mail host's limit. */
+    MAIL_DAILY_LIMIT: z.coerce.number().int().min(0).default(300),
 
     /** The Firebase service account key file; empty logs pushes instead of sending them. */
     FIREBASE_SERVICE_ACCOUNT_FILE: z.string().default(''),

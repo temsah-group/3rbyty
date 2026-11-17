@@ -506,6 +506,23 @@ const messages = {
     ar: 'لو مش انت اللي طلبته، تجاهل الرسالة دي وحسابك في أمان.',
     en: 'If you did not ask for it, ignore this email; your account is safe.',
   },
+  'mail.notifyWhy': {
+    ar: 'وصلك الإيميل ده لأن عندك حساب على عربيتي.',
+    en: 'You got this email because you have a 3arabity account.',
+  },
+  'mail.notifyOpen': { ar: 'افتح على عربيتي', en: 'Open on 3arabity' },
+  'mail.notifySettings': { ar: 'إعدادات الإشعارات', en: 'Notification settings' },
+  'mail.notifyOff': { ar: 'وقّف الإيميلات دي', en: 'Stop these emails' },
+  'mail.digestSubject': { ar: 'عندك {0} جديد على عربيتي', en: '{0} new on 3arabity' },
+  'mail.digestTitle': { ar: 'اللي جدّ عندك من امبارح ({0})', en: "What's new since yesterday ({0})" },
+  'mail.digestMore': { ar: 'و{0} كمان في الإشعارات.', en: 'And {0} more in your notifications.' },
+  'mail.digestOpen': { ar: 'شوف كل الإشعارات', en: 'See all notifications' },
+  'mail.offDone': { ar: 'وقفنا الإيميلات', en: 'Emails stopped' },
+  'mail.offHint': {
+    ar: 'مش هيوصلك إيميلات بالإشعارات تاني. تقدر ترجّعها من إعدادات الإشعارات في أي وقت.',
+    en: "You won't get notification emails any more. You can turn them back on in notification settings.",
+  },
+  'mail.offInvalid': { ar: 'اللينك ده مش شغال', en: 'This link is not valid' },
   'mail.footer': {
     ar: 'عربيتي — قطع غيار العربيات في مصر',
     en: '3arabity — car parts in Egypt',

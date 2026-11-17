@@ -10,7 +10,7 @@ import { authRoutes } from './modules/auth/auth.routes.js';
 import { cardScanRoutes } from './modules/card-scan/card-scan.js';
 import { assistantRoutes } from './modules/assistant/assistant.js';
 import { healthRoutes } from './modules/health/health.routes.js';
-import { notificationsRoutes } from './modules/notifications/notifications.routes.js';
+import { notificationsRoutes, emailOffRoutes } from './modules/notifications/notifications.routes.js';
 import { partsRoutes, uploadRoutes } from './modules/parts/parts.routes.js';
 import { reportsRoutes } from './modules/reports/reports.js';
 import { requestsRoutes } from './modules/requests/requests.js';
@@ -64,6 +64,7 @@ export function createApp(container: Container) {
   const api = Router();
   api.use('/health', healthRoutes(container.connection));
   api.use('/auth/scan-card', cardScanRoutes(container.cardScanner));
+  api.use('/email-off', emailOffRoutes(container.notifications, env.SITE_URL ?? 'https://3rbyty.com'));
   api.use(
     '/assistant',
     assistantRoutes(container.assistant, async () => {

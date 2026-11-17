@@ -36,12 +36,16 @@ const notificationSchema = new Schema(
     /** The dashboard announcement it delivers, so removing that removes it. */
     announcementId: { type: Schema.Types.ObjectId, ref: 'Announcement', default: null },
     read: { type: Boolean, default: false },
+    /** When it went out by email, on its own or in a daily summary; null if not (yet). */
+    emailedAt: { type: Date, default: null },
   },
   { timestamps: true, collection: 'notifications' },
 );
 
 notificationSchema.index({ userId: 1, createdAt: -1, _id: -1 });
 notificationSchema.index({ userId: 1, read: 1 });
+// The daily summary: unread, not emailed, recent.
+notificationSchema.index({ emailedAt: 1, read: 1, createdAt: 1 });
 notificationSchema.index({ partId: 1 });
 notificationSchema.index({ shopId: 1 }, { sparse: true });
 notificationSchema.index({ announcementId: 1 }, { sparse: true });

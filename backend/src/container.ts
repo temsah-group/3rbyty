@@ -100,6 +100,14 @@ export function createContainer(
     models.User,
     models.SavedPart,
     overrides.push ?? createPushSender(env),
+    {
+      mailer,
+      // Links in emails point at the website; this is its address when .env has none.
+      siteUrl: env.SITE_URL ?? 'https://3rbyty.com',
+      apiPrefix: '/api/v1',
+      secret: env.JWT_ACCESS_SECRET,
+      dailyLimit: env.MAIL_DAILY_LIMIT,
+    },
   );
   // Set once `shops` exists; shops only call it after a request.
   let savedShops: SavedShopsService | undefined;

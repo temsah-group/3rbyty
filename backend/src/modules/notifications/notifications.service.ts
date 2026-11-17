@@ -18,6 +18,17 @@ import type {
   NotificationModel,
 } from './notification.model.js';
 import type { PushMessage, PushSender } from './push.js';
+import type { Mailer } from '../mail/mailer.js';
+import { AccountStatus } from '../users/user.model.js';
+import {
+  digestEmail,
+  EMAIL_DIGEST,
+  EMAIL_NOW,
+  emailOffUrl,
+  emailOffValid,
+  notificationEmail,
+  type EmailItem,
+} from './email.js';
 
 /** What happened to a listing; the first param of a `LISTING` notification. */
 export type ListingChange = 'HIDDEN' | 'RESTORED' | 'REMOVED';
@@ -34,7 +45,25 @@ export type ShopChange =
 /** What a moderator did to an account; the first param of an `ACCOUNT` notification. */
 export type AccountChange = 'VERIFIED' | 'RESTORED';
 
-export type NotificationSettings = { fitsMyCar: boolean; priceDrops: boolean; news: boolean };
+export type NotificationSettings = { fitsMyCar: boolean; priceDrops: boolean; news: boolean; email: boolean };
+
+/** How notifications go out by email; without it, they don't. */
+export type EmailChannel = {
+  mailer: Mailer;
+  /** The website, for links in the emails. */
+  siteUrl: string;
+  apiPrefix: string;
+  /** Signs each user's "stop these emails" link. */
+  secret: string;
+  /** Emails a day at most, under what the mail host allows; the rest wait. */
+  dailyLimit: number;
+};
+
+/** A user hears about part requests by email at most this often; the rest go in the daily summary. */
+const REQUEST_EMAIL_GAP_MS = 30 * 60_000;
+/** The daily summary goes out at this hour, Cairo time, and covers about the last day and a half. */
+const DIGEST_HOUR = 10;
+const DIGEST_WINDOW_MS = 36 * 60 * 60_000;
 
 /** How many users one new part may notify; the rest miss out, the app goes on. */
 const MAX_RECIPIENTS = 2000;
@@ -53,7 +82,12 @@ export class NotificationsService {
     private readonly users: UserModel,
     private readonly saved: SavedPartModel,
     private readonly push: PushSender,
+    private readonly email: EmailChannel | null = null,
   ) {}
+
+  /** Emails sent today (Cairo), against [EmailChannel.dailyLimit]. */
+  private emailed = { day: '', count: 0 };
+  private lastDigestDay = '';
 
   /** Pushes still going out; tests wait on them with [flush]. */
   private readonly sending = new Set<Promise<void>>();
@@ -102,13 +136,18 @@ export class NotificationsService {
     return settingsOf(user);
   }
 
-  async updateSettings(userId: string, input: NotificationSettings): Promise<NotificationSettings> {
+  /** Older apps don't send [email]: it stays as it was. */
+  async updateSettings(
+    userId: string,
+    input: Omit<NotificationSettings, 'email'> & { email?: boolean },
+  ): Promise<NotificationSettings> {
+    const changes = Object.fromEntries(
+      Object.entries(input)
+        .filter(([, value]) => value !== undefined)
+        .map(([key, value]) => [`notificationSettings.${key}`, value]),
+    );
     const user = await this.users
-      .findByIdAndUpdate(
-        userId,
-        { $set: { notificationSettings: input } },
-        { returnDocument: 'after' },
-      )
+      .findByIdAndUpdate(userId, { $set: changes }, { returnDocument: 'after' })
       .select('notificationSettings')
       .exec();
     return settingsOf(user);
@@ -133,14 +172,141 @@ export class NotificationsService {
    */
   deliverLater(items: NotificationDocument[]): void {
     if (items.length === 0) return;
-    const job = this.deliver(items)
-      .catch((error: unknown) => {
+    const job = Promise.all([
+      this.deliver(items).catch((error: unknown) => {
         logger.error('Push failed', {
           error: error instanceof Error ? error.message : String(error),
         });
-      })
+      }),
+      this.emailNow(items).catch((error: unknown) => {
+        logger.error('Notification email failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }),
+    ])
+      .then(() => {})
       .finally(() => this.sending.delete(job));
     this.sending.add(job);
+  }
+
+  // ---- Email ----
+
+  /** Users that may get email, by id: a confirmed address, active, emails on. */
+  private async emailable(userIds: Types.ObjectId[]) {
+    const users = await this.users
+      .find({
+        _id: { $in: userIds },
+        emailVerifiedAt: { $ne: null },
+        accountStatus: AccountStatus.ACTIVE,
+        'notificationSettings.email': { $ne: false },
+      })
+      .select('email')
+      .lean()
+      .exec();
+    return new Map(users.map((user) => [user._id.toString(), user.email]));
+  }
+
+  /** Whether one more email fits under today's limit; counts it if so. */
+  private takeEmail(now = new Date()): boolean {
+    if (!this.email) return false;
+    const day = cairoDay(now);
+    if (this.emailed.day !== day) this.emailed = { day, count: 0 };
+    if (this.emailed.count >= this.email.dailyLimit) {
+      if (this.emailed.count === this.email.dailyLimit) {
+        logger.warn('Daily email limit reached; the rest wait for tomorrow', { limit: this.email.dailyLimit });
+      }
+      this.emailed.count++;
+      return false;
+    }
+    this.emailed.count++;
+    return true;
+  }
+
+  /**
+   * The notifications that can't wait (a shop's answer, a buyer's request, news
+   * about a shop, listing or account), emailed now. Part requests at most once
+   * every half hour per user: the others go in tomorrow's summary.
+   */
+  private async emailNow(items: NotificationDocument[]): Promise<void> {
+    const channel = this.email;
+    if (!channel) return;
+    const urgent = items.filter((item) => EMAIL_NOW.has(item.kind));
+    if (urgent.length === 0) return;
+    const addresses = await this.emailable(urgent.map((item) => item.userId));
+    for (const item of urgent) {
+      const userId = item.userId.toString();
+      const to = addresses.get(userId);
+      if (!to) continue;
+      if (item.kind === 'PART_REQUEST') {
+        const recent = await this.notifications
+          .exists({
+            userId: item.userId,
+            kind: 'PART_REQUEST',
+            emailedAt: { $gte: new Date(Date.now() - REQUEST_EMAIL_GAP_MS) },
+          })
+          .exec();
+        if (recent) continue;
+      }
+      if (!this.takeEmail()) return;
+      const offUrl = emailOffUrl(channel.siteUrl, channel.apiPrefix, channel.secret, userId);
+      await channel.mailer.send(notificationEmail('ar', to, emailItem(item), channel.siteUrl, offUrl));
+      await this.notifications.updateOne({ _id: item._id }, { $set: { emailedAt: new Date() } }).exec();
+    }
+  }
+
+  /**
+   * Once a day, one email per user with what is new and still unread that
+   * was not emailed on its own. Safe to run again: what went out is marked.
+   */
+  async sendDigest(now = new Date()): Promise<number> {
+    const channel = this.email;
+    if (!channel) return 0;
+    const pending = await this.notifications
+      .find({
+        kind: { $in: EMAIL_DIGEST },
+        read: false,
+        emailedAt: null,
+        createdAt: { $gte: new Date(now.getTime() - DIGEST_WINDOW_MS) },
+      })
+      .sort({ createdAt: -1 })
+      .exec();
+    const byUser = new Map<string, NotificationDocument[]>();
+    for (const item of pending) {
+      const key = item.userId.toString();
+      byUser.set(key, [...(byUser.get(key) ?? []), item]);
+    }
+    const addresses = await this.emailable([...byUser.keys()].map((id) => new Types.ObjectId(id)));
+    let sent = 0;
+    for (const [userId, items] of byUser) {
+      const to = addresses.get(userId);
+      if (!to) continue;
+      if (!this.takeEmail(now)) break;
+      const offUrl = emailOffUrl(channel.siteUrl, channel.apiPrefix, channel.secret, userId);
+      await channel.mailer.send(digestEmail('ar', to, items.map(emailItem), channel.siteUrl, offUrl));
+      await this.notifications
+        .updateMany({ _id: { $in: items.map((item) => item._id) } }, { $set: { emailedAt: now } })
+        .exec();
+      sent++;
+    }
+    return sent;
+  }
+
+  /** The daily summary, when its hour has come and it has not gone out today. */
+  async digestIfDue(now = new Date()): Promise<void> {
+    const day = cairoDay(now);
+    if (cairoHour(now) < DIGEST_HOUR || this.lastDigestDay === day) return;
+    this.lastDigestDay = day;
+    const sent = await this.sendDigest(now);
+    if (sent) logger.info('Daily notification emails sent', { users: sent });
+  }
+
+  /** A "stop these emails" link: emails off for that user. False if the link is not genuine. */
+  async emailOff(userId: string, signature: string): Promise<boolean> {
+    if (!this.email || !Types.ObjectId.isValid(userId) || !emailOffValid(this.email.secret, userId, signature)) {
+      return false;
+    }
+    await this.users.updateOne({ _id: userId }, { $set: { 'notificationSettings.email': false } }).exec();
+    return true;
   }
 
   /** Resolves once every push started so far has gone out. */
@@ -362,6 +528,37 @@ function settingsOf(
     fitsMyCar: settings?.fitsMyCar ?? true,
     priceDrops: settings?.priceDrops ?? true,
     news: settings?.news ?? false,
+    email: settings?.email ?? true,
+  };
+}
+
+const cairo = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Africa/Cairo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  hourCycle: 'h23',
+});
+const cairoParts = (date: Date) =>
+  Object.fromEntries(cairo.formatToParts(date).map((part) => [part.type, part.value]));
+/** The date in Cairo, as 2026-11-17. */
+const cairoDay = (date: Date) => {
+  const parts = cairoParts(date);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+const cairoHour = (date: Date) => Number(cairoParts(date).hour);
+
+/** A notification as an email shows it: in Arabic, the site's language. */
+function emailItem(item: NotificationDocument): EmailItem {
+  const shown = present(item, 'ar');
+  return {
+    kind: shown.kind,
+    title: shown.title,
+    body: shown.body,
+    partId: shown.partId,
+    shopId: shown.shopId,
+    requestId: shown.requestId,
   };
 }
 

@@ -231,13 +231,21 @@ describe('notifications', () => {
   it('keeps settings and push devices', async () => {
     const user = await signUp(app, 'user@example.com');
     let res = await app.api.get('/api/v1/notifications/settings').set(auth(user.token)).expect(200);
-    expect(res.body.data).toEqual({ fitsMyCar: true, priceDrops: true, news: false });
+    // Email is on unless turned off.
+    expect(res.body.data).toEqual({ fitsMyCar: true, priceDrops: true, news: false, email: true });
     res = await app.api
       .put('/api/v1/notifications/settings')
       .set(auth(user.token))
       .send({ fitsMyCar: false, priceDrops: true, news: true })
       .expect(200);
-    expect(res.body.data).toEqual({ fitsMyCar: false, priceDrops: true, news: true });
+    // An older app sends no email setting: it stays as it was.
+    expect(res.body.data).toEqual({ fitsMyCar: false, priceDrops: true, news: true, email: true });
+    res = await app.api
+      .put('/api/v1/notifications/settings')
+      .set(auth(user.token))
+      .send({ fitsMyCar: false, priceDrops: true, news: true, email: false })
+      .expect(200);
+    expect(res.body.data.email).toBe(false);
     await app.api
       .put('/api/v1/notifications/settings')
       .set(auth(user.token))

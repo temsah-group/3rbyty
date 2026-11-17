@@ -6,7 +6,7 @@ import { LOGO_PNG_BASE64 } from './logo.js';
 import { LOGO_CID } from './templates.js';
 
 /** [html] is optional; mail clients that cannot show it read [text]. */
-export type Mail = { to: string; subject: string; text: string; html?: string };
+export type Mail = { to: string; subject: string; text: string; html?: string; headers?: Record<string, string> };
 
 const logo = Buffer.from(LOGO_PNG_BASE64, 'base64');
 
