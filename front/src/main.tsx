@@ -22,6 +22,20 @@ const queryClient = new QueryClient({
   },
 });
 
+// After an upload, a page opened before it asks for files the new version no
+// longer has: load the new version, once, right where the visitor is. Not
+// again within a minute, so a file that is really missing can't loop.
+window.addEventListener('vite:preloadError', () => {
+  try {
+    const last = Number(sessionStorage.getItem('reloaded-for-update') ?? 0);
+    if (Date.now() - last < 60_000) return;
+    sessionStorage.setItem('reloaded-for-update', String(Date.now()));
+    window.location.reload();
+  } catch {
+    // No storage to remember the reload by: better an error than a loop.
+  }
+});
+
 // The worker that shows push notifications also makes the site installable.
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => void navigator.serviceWorker.register('/push-sw.js').catch(() => {}));
