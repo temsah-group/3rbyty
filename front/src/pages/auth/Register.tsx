@@ -1,4 +1,4 @@
-import { Camera, Loader2, Store, User } from 'lucide-react';
+import { Camera, ImageUp, Loader2, Store, User } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -54,7 +54,8 @@ export default function Register() {
   const [phoneError, setPhoneError] = useState<string>();
   const [loading, setLoading] = useState(false);
   const cardScan = useAppConfig().data?.features?.cardScan ?? false;
-  const cardInput = useRef<HTMLInputElement>(null);
+  const cardCamera = useRef<HTMLInputElement>(null);
+  const cardGallery = useRef<HTMLInputElement>(null);
   const [scanning, setScanning] = useState(false);
   /** 0–1 while the free in-browser reader loads and reads; null otherwise. */
   const [scanProgress, setScanProgress] = useState<number | null>(null);
@@ -169,22 +170,27 @@ export default function Register() {
         {isShop ? (
           <>
               <div className="rounded-2xl border-2 border-dashed border-orange/40 bg-orange-mist p-4 text-center">
-                <button
-                  type="button"
-                  onClick={() => cardInput.current?.click()}
-                  disabled={scanning}
-                  className="inline-flex items-center gap-2 rounded-xl bg-orange px-4 py-2.5 font-bold text-white hover:bg-orange-deep disabled:opacity-70"
-                >
-                  {scanning ? <Loader2 className="h-5 w-5 animate-spin" /> : <Camera className="h-5 w-5" />}
-                  {scanning
-                    ? scanProgress !== null
-                      ? `${tr('بنقرا الكارت…', 'Reading the card…')} ${Math.round(scanProgress * 100)}%`
-                      : tr('بنقرا الكارت…', 'Reading the card…')
-                    : tr('صوّر كارت المحل', 'Snap your business card')}
-                </button>
-                <p className="mt-2 text-xs text-ink-soft">{tr('هنملا الاسم والرقم والعنوان من الكارت لوحدنا.', "We'll fill in the name, number and address from it.")}</p>
-                {/* `capture` opens the back camera on phones; a computer picks a file. */}
-                <input ref={cardInput} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden onChange={(e) => { void scanCard(e.target.files?.[0]); e.target.value = ''; }} />
+                {scanning ? (
+                  <p className="inline-flex items-center gap-2 py-2.5 font-bold text-orange-deep" role="status">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    {scanProgress !== null ? `${tr('بنقرا الكارت…', 'Reading the card…')} ${Math.round(scanProgress * 100)}%` : tr('بنقرا الكارت…', 'Reading the card…')}
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <button type="button" onClick={() => cardCamera.current?.click()} className="inline-flex items-center gap-2 rounded-xl bg-orange px-4 py-2.5 font-bold text-white hover:bg-orange-deep">
+                      <Camera className="h-5 w-5" />
+                      {tr('صوّر الكارت', 'Take a photo')}
+                    </button>
+                    <button type="button" onClick={() => cardGallery.current?.click()} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 font-bold text-orange-deep ring-1 ring-orange/40 hover:ring-orange">
+                      <ImageUp className="h-5 w-5" />
+                      {tr('ارفع صورة الكارت', 'Upload a photo')}
+                    </button>
+                  </div>
+                )}
+                <p className="mt-2 text-xs text-ink-soft">{tr('هنملا الاسم والرقم والعنوان من الكارت لوحدنا. صوّره من قريب وفي نور كويس.', "We'll fill in the name, number and address from it. Shoot it close up, in good light.")}</p>
+                {/* `capture` opens the back camera on phones; the other one picks a saved photo (or a file on a computer). */}
+                <input ref={cardCamera} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden onChange={(e) => { void scanCard(e.target.files?.[0]); e.target.value = ''; }} />
+                <input ref={cardGallery} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { void scanCard(e.target.files?.[0]); e.target.value = ''; }} />
                 {scanNote && (
                   <p role="status" className={cx('mt-3 rounded-lg p-2 text-sm', scanNote.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700')}>
                     {scanNote.text}

@@ -151,10 +151,22 @@ export function findPhone(text: string): string | null {
   const lines = westernDigits(text).split(/\n/);
   // Read inside an Arabic line, "010 2345 6789" can come out as "6789 2345 010":
   // each line is tried as read, joined, and with its groups the other way round.
+  // Read the other way round, two groups printed together ("723 2862") come
+  // out as one block with its halves swapped too ("2862723"): that block's
+  // first four digits go to its end, and this is tried before plain reversal.
   const orders = (line: string) => {
     const groups = line.match(/\d+/g) ?? [];
-    return [line, groups.join(' '), [...groups].reverse().join(' ')];
+    const reversed = [...groups].reverse();
+    const unswapped = reversed.map((g) => (g.length === 7 || g.length === 8 ? g.slice(4) + g.slice(0, 4) : g));
+    return [line, groups.join(' '), unswapped.join(' '), reversed.join(' ')];
   };
+  // A line holding just one mobile in groups whose order the reader mixed up
+  // ("0106 723 2862" read as "0106 2862 723", still a valid-looking number):
+  // the one order with the usual grouping, if there is exactly one.
+  for (const line of lines) {
+    const grouped = usualOrder(line);
+    if (grouped) return grouped;
+  }
   // A whole number first (01… or +20…), in any order of any line: a chunk
   // without its leading 0 found in a shuffled order is how wrong numbers come out.
   for (const line of lines) {
@@ -175,6 +187,33 @@ export function findPhone(text: string): string | null {
     }
   }
   return null;
+}
+
+/** How mobiles are grouped on cards: "01001234567", "0100 123 4567", "010 0123 4567", "+20 100 123 4567"… */
+const USUAL_GROUPS = new Set(['11', '4-3-4', '3-4-4', '2-10', '2-3-3-4', '2-2-4-4']);
+
+/**
+ * The mobile on [line] when its digit groups (2 to 4 of them, nothing else
+ * numeric on the line) make a mobile in exactly one usually-grouped order.
+ */
+function usualOrder(line: string): string | null {
+  const groups = line.match(/\d+/g) ?? [];
+  if (groups.length < 2 || groups.length > 4) return null;
+  const digits = groups.join('').length;
+  if (digits !== 11 && digits !== 12) return null;
+  const found = new Set<string>();
+  const permute = (rest: string[], taken: string[]) => {
+    if (!rest.length) {
+      if (!USUAL_GROUPS.has(taken.map((g) => g.length).join('-'))) return;
+      const joined = taken.join('');
+      const e164 = toE164(joined.startsWith('20') ? `+${joined}` : joined);
+      if (e164) found.add(fromE164(e164));
+      return;
+    }
+    rest.forEach((group, i) => permute([...rest.slice(0, i), ...rest.slice(i + 1)], [...taken, group]));
+  };
+  permute(groups, []);
+  return found.size === 1 ? [...found][0]! : null;
 }
 
 /**
