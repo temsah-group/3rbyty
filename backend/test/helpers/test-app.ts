@@ -14,6 +14,7 @@ import type { GoogleIdentity, GoogleVerifier } from '../../src/modules/auth/goog
 import type { Mail, Mailer } from '../../src/modules/mail/mailer.js';
 import type { PushMessage, PushSender } from '../../src/modules/notifications/push.js';
 import type { Assistant, ChatLine, SiteFacts } from '../../src/modules/assistant/assistant.js';
+import type { ListingReader, SpokenListing } from '../../src/modules/parts/voice-listing.js';
 
 /** Keeps every email so tests can read the codes out of them. */
 export class CapturingMailer implements Mailer {
@@ -84,6 +85,19 @@ export class FakeAssistant implements Assistant {
   }
 }
 
+/** Stands in for Claude sorting a dictated listing: answers [result], or throws when [fail] is set. */
+export class FakeListingReader implements ListingReader {
+  result: SpokenListing = { name: null, category: null, condition: null, isOriginal: null, partNumber: null, price: null, description: null, fitsAllCars: false, cars: [] };
+  fail = false;
+  heard: string[] = [];
+
+  async read(text: string): Promise<SpokenListing> {
+    this.heard.push(text);
+    if (this.fail) throw new Error('reader down');
+    return this.result;
+  }
+}
+
 export type TestApp = {
   api: ReturnType<typeof request>;
   mailer: CapturingMailer;
@@ -91,6 +105,7 @@ export type TestApp = {
   push: CapturingPush;
   cardScanner: FakeCardScanner;
   assistant: FakeAssistant;
+  listingReader: FakeListingReader;
   container: Container;
   reset(): Promise<void>;
   close(): Promise<void>;
@@ -115,7 +130,8 @@ export async function startTestApp(): Promise<TestApp> {
   const push = new CapturingPush();
   const cardScanner = new FakeCardScanner();
   const assistant = new FakeAssistant();
-  const container = createContainer(connection, env, { mailer, google, push, cardScanner, assistant });
+  const listingReader = new FakeListingReader();
+  const container = createContainer(connection, env, { mailer, google, push, cardScanner, assistant, listingReader });
   await Promise.all(Object.values(container.models).map((model) => model.syncIndexes()));
   const api = request(createApp(container));
 
@@ -126,6 +142,7 @@ export async function startTestApp(): Promise<TestApp> {
     push,
     cardScanner,
     assistant,
+    listingReader,
     container,
     async reset() {
       await container.notifications.flush();
@@ -137,6 +154,8 @@ export async function startTestApp(): Promise<TestApp> {
       assistant.fail = false;
       assistant.answer = 'تمام';
       assistant.asked.length = 0;
+      listingReader.fail = false;
+      listingReader.heard.length = 0;
       // Every collection, so each test starts empty.
       await Promise.all(
         Object.values(container.connection.collections).map((collection) =>

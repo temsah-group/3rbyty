@@ -37,6 +37,7 @@ import { createContactModel, createReviewModel } from './modules/reviews/review.
 import { ReviewsService } from './modules/reviews/reviews.service.js';
 import { ClaudeCardScanner, type CardScanner } from './modules/card-scan/card-scan.js';
 import { ClaudeAssistant, type Assistant } from './modules/assistant/assistant.js';
+import { ClaudeListingReader, type ListingReader } from './modules/parts/voice-listing.js';
 import { createPartRequestModel, createRequestReplyModel, RequestsService } from './modules/requests/requests.js';
 import { createShopModel } from './modules/shops/shop.model.js';
 import { shopInputSchema } from './modules/shops/shops.schemas.js';
@@ -50,7 +51,7 @@ import { UsersService } from './modules/users/users.service.js';
 export function createContainer(
   connection: Connection,
   env: Env,
-  overrides: { mailer?: Mailer; google?: GoogleVerifier; push?: PushSender; cardScanner?: CardScanner | null; assistant?: Assistant | null } = {},
+  overrides: { mailer?: Mailer; google?: GoogleVerifier; push?: PushSender; cardScanner?: CardScanner | null; assistant?: Assistant | null; listingReader?: ListingReader | null } = {},
 ) {
   const models = {
     User: createUserModel(connection),
@@ -238,6 +239,13 @@ export function createContainer(
         ? overrides.assistant
         : env.ANTHROPIC_API_KEY
           ? new ClaudeAssistant(env.ANTHROPIC_API_KEY)
+          : null,
+    // And sorts a part a seller dictated into the selling form.
+    listingReader:
+      overrides.listingReader !== undefined
+        ? overrides.listingReader
+        : env.ANTHROPIC_API_KEY
+          ? new ClaudeListingReader(env.ANTHROPIC_API_KEY)
           : null,
     photos,
     parts,

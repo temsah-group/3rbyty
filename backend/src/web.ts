@@ -1,8 +1,11 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import express, { Router } from 'express';
 import helmet from 'helmet';
+
+import { logger } from './common/logger.js';
+import { withPageMeta, type PageMetaResolver } from './web-meta.js';
 
 /** What the API answers; everything else is the website. */
 const API_PATHS = /^\/(?:api|uploads)(?:\/|$)|^\/sitemap\.xml$/;
@@ -10,9 +13,10 @@ const API_PATHS = /^\/(?:api|uploads)(?:\/|$)|^\/sitemap\.xml$/;
 /**
  * The website and the dashboard from [dir] (the web build, with the
  * dashboard's build in `admin/`), so one Node app serves the whole domain.
- * Null when [dir] has no build, e.g. in development.
+ * Null when [dir] has no build, e.g. in development. With [pages], each
+ * part's and shop's page is sent with its own title, photo and structured data.
  */
-export function websiteRoutes(dir: string): Router | null {
+export function websiteRoutes(dir: string, pages?: { meta: PageMetaResolver; siteUrl: string }): Router | null {
   const root = path.resolve(dir);
   const site = path.join(root, 'index.html');
   if (!existsSync(site)) return null;
@@ -53,11 +57,21 @@ export function websiteRoutes(dir: string): Router | null {
     }),
   );
   // Single-page apps: every other path is a page of the site or the dashboard.
-  router.use((req, res, next) => {
+  const template = readFileSync(site, 'utf8');
+  router.use(async (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-    const page = /^\/admin(?:\/|$)/.test(req.path) && existsSync(admin) ? admin : site;
     res.setHeader('Cache-Control', 'no-cache');
-    res.sendFile(page);
+    if (/^\/admin(?:\/|$)/.test(req.path) && existsSync(admin)) return res.sendFile(admin);
+    if (!pages) return res.sendFile(site);
+    try {
+      const meta = await pages.meta(req.path);
+      if (!meta) return res.type('html').send(template);
+      res.status(meta.notFound ? 404 : 200).type('html').send(withPageMeta(template, meta, pages.siteUrl));
+    } catch (error) {
+      // The page still works: the browser fills in its details.
+      logger.warn('Page details for the HTML failed', { path: req.path, error: error instanceof Error ? error.message : String(error) });
+      res.type('html').send(template);
+    }
   });
   return router;
 }

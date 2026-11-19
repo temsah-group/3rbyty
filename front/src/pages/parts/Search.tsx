@@ -458,7 +458,7 @@ export default function Search() {
             <>
               <PartGrid parts={list.items} className="lg:grid-cols-3 xl:grid-cols-4" />
               <LoadMore hasNext={list.hasNextPage} loading={list.isFetchingNextPage} onLoad={() => list.fetchNextPage()} />
-              {!list.hasNextPage && <AskBanner query={params.get('q')} />}
+              {!list.hasNextPage && <AskBanner query={params.get('q')} className="mt-12" />}
             </>
           )}
         </div>

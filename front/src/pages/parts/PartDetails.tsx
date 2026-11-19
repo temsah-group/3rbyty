@@ -255,12 +255,12 @@ export default function PartDetails() {
         </div>
       </div>
 
-      <div className="mt-10">
+      <div data-nosnippet="" className="mt-10">
         <Reviews target="parts" id={p.id} ownerId={p.seller.id} />
       </div>
 
       {!!similar.data?.items.length && (
-        <section className="mt-10">
+        <section data-nosnippet="" className="mt-10">
           <h2 className="mb-4 text-xl font-extrabold">{tr('قطع شبهها', 'Similar parts')}</h2>
           <PartRow parts={similar.data.items} />
         </section>

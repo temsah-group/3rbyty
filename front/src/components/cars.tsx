@@ -3,7 +3,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import type { KeyboardEvent } from 'react';
 
 import { brandLogo, carId, carKey, modelYears, OLDEST_YEAR, OTHER_BRAND, useLabels, yearRange } from '@/lib/catalog';
-import { addCar, followCar, garage, MAX_CARS, removeCar } from '@/lib/collections';
+import { addCar, garage, isFollowed, MAX_CARS, removeCar, toggleCar } from '@/lib/collections';
 import { useI18n } from '@/lib/i18n';
 import type { CarBrand, CarModel, Fitment, GarageCar } from '@/lib/types';
 
@@ -551,7 +551,8 @@ export function GarageDialog({ open, onClose }: { open: boolean; onClose: () => 
   const { tr } = useI18n();
   const labels = useLabels();
   const confirm = useConfirm();
-  const { cars, active } = garage.use();
+  const state = garage.use();
+  const { cars } = state;
   const [picking, setPicking] = useState(false);
 
   return (
@@ -567,22 +568,22 @@ export function GarageDialog({ open, onClose }: { open: boolean; onClose: () => 
           {cars.length > 1 && (
             <li>
               <button
-                onClick={() => followCar(-1)}
-                className={cx('flex w-full items-center justify-between rounded-xl border px-4 py-3 font-bold', active === -1 ? 'border-orange bg-orange-mist' : 'border-line')}
+                onClick={() => toggleCar(-1)}
+                className={cx('flex w-full items-center justify-between rounded-xl border px-4 py-3 font-bold', isFollowed(state, -1) ? 'border-orange bg-orange-mist' : 'border-line')}
               >
                 {tr('كل عربياتي', 'All my cars')}
-                {active === -1 && <Check className="h-5 w-5 text-orange-deep" />}
+                {isFollowed(state, -1) && <Check className="h-5 w-5 text-orange-deep" />}
               </button>
             </li>
           )}
           {cars.map((car, i) => (
             <li key={carId(car)} className="flex items-center gap-2">
               <button
-                onClick={() => followCar(i)}
-                className={cx('flex flex-1 items-center justify-between rounded-xl border px-4 py-3 text-start font-bold', active === i || (cars.length === 1) ? 'border-orange bg-orange-mist' : 'border-line')}
+                onClick={() => toggleCar(i)}
+                className={cx('flex flex-1 items-center justify-between rounded-xl border px-4 py-3 text-start font-bold', isFollowed(state, i) ? 'border-orange bg-orange-mist' : 'border-line')}
               >
                 {labels.car(car)}
-                {(active === i || cars.length === 1) && <Check className="h-5 w-5 text-orange-deep" />}
+                {isFollowed(state, i) && <Check className="h-5 w-5 text-orange-deep" />}
               </button>
               <button
                 onClick={async () => {
@@ -649,7 +650,7 @@ export function FitCheck({ fitments, fitsAllCars = false }: { fitments: Fitment[
 
   if (!cars.length) {
     return (
-      <div className="flex items-center gap-3 rounded-2xl bg-navy-mist p-4">
+      <div data-nosnippet="" className="flex items-center gap-3 rounded-2xl bg-navy-mist p-4">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-navy">
           <CarFront className="h-5 w-5" />
         </span>

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Bell, Heart, Home, Plus, Search, User, X } from 'lucide-react';
+import { Bell, Facebook, Heart, Home, Instagram, Plus, Search, User, X } from 'lucide-react';
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -15,6 +15,7 @@ import { SearchBox } from './search';
 import { Avatar, Button, cx, Dialog } from './ui';
 import { HelpChat } from './HelpChat';
 import { InstallBanner } from './InstallBanner';
+import { SOCIAL } from '@/lib/social';
 
 export function Logo({ light }: { light?: boolean }) {
   return (
@@ -65,7 +66,7 @@ function Header() {
     cx('rounded-lg px-3 py-2 text-sm font-bold transition-colors', isActive ? 'bg-white/15 text-white' : 'text-white/80 hover:text-white');
 
   return (
-    <header className="sticky top-0 z-30 bg-navy text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+    <header data-nosnippet="" className="sticky top-0 z-30 bg-navy text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       <div className="mx-auto flex h-16 max-w-page items-center gap-4 px-4">
         <Logo light />
         <nav className="hidden items-center gap-1 lg:flex">
@@ -122,7 +123,7 @@ function BottomNav() {
   const item = ({ isActive }: { isActive: boolean }) =>
     cx('flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-bold', isActive ? 'text-navy' : 'text-ink-muted');
   return (
-    <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white md:hidden">
+    <nav data-nosnippet="" className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white md:hidden">
       <div className="flex items-end">
         <NavLink to="/" end className={item}>
           <Home className="h-5 w-5" />
@@ -159,7 +160,7 @@ function AnnouncementBanner() {
   const dismissed = dismissedBanners.use();
   if (!announcement || dismissed.includes(announcement.id)) return null;
   return (
-    <div className="bg-orange-mist">
+    <div data-nosnippet="" className="bg-orange-mist">
       <div className="mx-auto flex max-w-page items-start gap-3 px-4 py-3 text-sm">
         <div className="flex-1">
           <p className="font-extrabold">{pick(announcement.titleAr, announcement.titleEn)}</p>
@@ -205,7 +206,7 @@ function SessionEndedDialog() {
 function Footer() {
   const { tr } = useI18n();
   return (
-    <footer className="mt-16 bg-navy-deep text-white/70">
+    <footer data-nosnippet="" className="mt-16 bg-navy-deep text-white/70">
       <div className="mx-auto grid max-w-page gap-8 px-4 py-10 sm:grid-cols-3">
         <div className="space-y-3">
           <Logo light />
@@ -224,10 +225,36 @@ function Footer() {
           <Link to="/legal/terms" className="hover:text-white">{tr('شروط الاستخدام', 'Terms of use')}</Link>
           <Link to="/legal/privacy" className="hover:text-white">{tr('سياسة الخصوصية', 'Privacy policy')}</Link>
           <LanguageSwitch className="self-start px-0 hover:bg-transparent hover:text-white" />
+          <div className="mt-2 flex gap-2">
+            {SOCIAL.map((page) => (
+              <a
+                key={page.id}
+                href={page.url}
+                target="_blank"
+                rel="noopener"
+                aria-label={tr(`عربيتي على ${page.label}`, `3arabity on ${page.label}`)}
+                title={page.label}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-orange"
+              >
+                <SocialIcon id={page.id} />
+              </a>
+            ))}
+          </div>
         </div>
       </div>
       <p className="border-t border-white/10 py-4 text-center text-xs">© {new Date().getFullYear()} عربيتي</p>
     </footer>
+  );
+}
+
+/** Facebook and Instagram from the icon set; TikTok's note drawn here (the set has none). */
+function SocialIcon({ id }: { id: (typeof SOCIAL)[number]['id'] }) {
+  if (id === 'facebook') return <Facebook className="h-5 w-5" />;
+  if (id === 'instagram') return <Instagram className="h-5 w-5" />;
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
+      <path d="M16.6 5.82A4.28 4.28 0 0 1 15.54 3h-3.09v12.4a2.59 2.59 0 0 1-2.59 2.5 2.59 2.59 0 0 1-2.59-2.59 2.59 2.59 0 0 1 3.36-2.47V9.68a5.73 5.73 0 0 0-.77-.05A5.68 5.68 0 0 0 4.18 15.3 5.68 5.68 0 0 0 9.86 21a5.68 5.68 0 0 0 5.68-5.68V9.01a7.35 7.35 0 0 0 4.3 1.38V7.3a4.3 4.3 0 0 1-3.24-1.48Z" />
+    </svg>
   );
 }
 

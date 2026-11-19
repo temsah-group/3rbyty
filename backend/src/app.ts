@@ -9,6 +9,7 @@ import { adminRoutes } from './modules/admin/admin.routes.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { cardScanRoutes } from './modules/card-scan/card-scan.js';
 import { assistantRoutes } from './modules/assistant/assistant.js';
+import { voiceListingRoutes } from './modules/parts/voice-listing.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { notificationsRoutes, emailOffRoutes } from './modules/notifications/notifications.routes.js';
 import { partsRoutes, uploadRoutes } from './modules/parts/parts.routes.js';
@@ -23,6 +24,7 @@ import { shopsRoutes } from './modules/shops/shops.routes.js';
 import { appConfigRoutes } from './modules/settings/settings.js';
 import { UPLOADS_ROUTE } from './modules/users/photo-storage.js';
 import { usersRoutes } from './modules/users/users.routes.js';
+import { pageMetaResolver } from './web-meta.js';
 import { websiteRoutes } from './web.js';
 
 export const API_PREFIX = '/api/v1';
@@ -34,7 +36,8 @@ export function createApp(container: Container) {
   app.disable('x-powered-by');
   app.set('trust proxy', env.TRUST_PROXY);
   // The website and dashboard builds, when deployed next to the API.
-  const website = websiteRoutes(env.WEB_DIR);
+  const siteUrl = (env.SITE_URL ?? 'https://3rbyty.com').replace(/\/+$/, '');
+  const website = websiteRoutes(env.WEB_DIR, { meta: pageMetaResolver(container.models, siteUrl), siteUrl });
   if (website) app.use(website);
   app.use(helmet());
   app.use(express.json({ limit: '100kb' }));
@@ -64,6 +67,7 @@ export function createApp(container: Container) {
   const api = Router();
   api.use('/health', healthRoutes(container.connection));
   api.use('/auth/scan-card', cardScanRoutes(container.cardScanner));
+  api.use('/listing-from-speech', voiceListingRoutes(container.listingReader, container.requireAuth));
   api.use('/email-off', emailOffRoutes(container.notifications, env.SITE_URL ?? 'https://3rbyty.com'));
   api.use(
     '/assistant',
@@ -106,7 +110,7 @@ export function createApp(container: Container) {
       container.settings,
       () => container.announcements.banner(),
       () => container.offers.live(),
-      { cardScan: container.cardScanner !== null, assistant: container.assistant !== null },
+      { cardScan: container.cardScanner !== null, assistant: container.assistant !== null, voiceListing: container.listingReader !== null },
     ),
   );
   app.use(API_PREFIX, api);

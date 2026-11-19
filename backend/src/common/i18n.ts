@@ -94,6 +94,14 @@ const messages = {
     ar: 'معرفناش نقرا الكارت، جرّب صورة أوضح أو اكتب البيانات بإيدك',
     en: "We couldn't read the card. Try a clearer photo or type the details",
   },
+  'voiceListing.off': {
+    ar: 'ملء الفورم بالصوت مش متاح دلوقتي، الكلام اتكتب في الاسم والوصف',
+    en: 'Filling the form by voice is not available right now',
+  },
+  'voiceListing.failed': {
+    ar: 'معرفناش نفهم الكلام، جرّب تاني أو املا الخانات بإيدك',
+    en: "We couldn't make that out. Try again or fill in the fields",
+  },
   'assistant.off': {
     ar: 'المساعد مش متاح دلوقتي، شوف صفحة المساعدة',
     en: 'The assistant is not available right now. See the help page',

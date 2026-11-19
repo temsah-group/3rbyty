@@ -304,7 +304,7 @@ export function appConfigRoutes(
   banner: () => Promise<object | null>,
   offers: () => Promise<object[]> = async () => [],
   /** Which optional features this server has switched on. */
-  features: { cardScan: boolean; assistant: boolean } = { cardScan: false, assistant: false },
+  features: { cardScan: boolean; assistant: boolean; voiceListing?: boolean } = { cardScan: false, assistant: false },
 ): Router {
   const router = Router();
   router.get('/', async (_req, res) => {

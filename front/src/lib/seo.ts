@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { useI18n } from './i18n';
 
 const SITE = { ar: 'عربيتي', en: '3arabity' };
-const DEFAULT_TITLE = { ar: 'عربيتي — قطع غيار العربيات في مصر', en: '3arabity — car parts in Egypt' };
+const DEFAULT_TITLE = { ar: 'عربيتي 3rbyty — قطع غيار العربيات في مصر', en: '3arabity (3rbyty) — car parts in Egypt' };
 const DEFAULT_DESCRIPTION = {
   ar: 'عربيتي: اشتري وبيع قطع غيار العربيات في مصر، جديد ومستعمل واستيراد. دوّر بالماركة والموديل والسنة واتواصل مع البيّاع مباشرة.',
   en: '3arabity: buy and sell car parts in Egypt, new, used and imported. Search by make, model and year and contact the seller directly.',

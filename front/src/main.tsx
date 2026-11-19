@@ -22,6 +22,10 @@ const queryClient = new QueryClient({
   },
 });
 
+// The server writes the first page's structured data into the HTML for link
+// previews and search engines; from here on each page adds its own.
+document.querySelectorAll('script[data-ssr]').forEach((script) => script.remove());
+
 // After an upload, a page opened before it asks for files the new version no
 // longer has: load the new version, once, right where the visitor is. Not
 // again within a minute, so a file that is really missing can't loop.

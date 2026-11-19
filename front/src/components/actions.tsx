@@ -35,7 +35,7 @@ export function ContactButtons({
     if (contactPath) post(contactPath, { channel }).catch(() => {});
   };
   return (
-    <div className={cx('flex gap-2', className)}>
+    <div data-nosnippet="" className={cx('flex gap-2', className)}>
       <a
         href={telLink(phone)}
         onClick={() => {

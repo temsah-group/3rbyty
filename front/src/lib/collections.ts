@@ -9,9 +9,12 @@ export const MAX_CARS = 5;
 
 interface GarageState {
   cars: GarageCar[];
-  /** Index of the car the home screen follows, or -1 for all of them. */
+  /** Index of the car the home screen follows, -1 for all of them, or [NO_CAR] for none. */
   active: number;
 }
+
+/** The car filter turned off: the home screen shows every part, as with no car. */
+export const NO_CAR = -2;
 
 export const garage = persisted<GarageState>('arabity.garage', { cars: [], active: -1 });
 
@@ -46,8 +49,22 @@ export function followCar(index: number) {
   garage.set({ ...garage.get(), active: index });
 }
 
+/** Whether [index] (a car, or -1 for all) is the one followed now; with one car, it is unless turned off. */
+export function isFollowed(state: GarageState, index: number) {
+  if (state.active === NO_CAR) return false;
+  if (index === -1) return state.active === -1 && state.cars.length > 1;
+  return state.active === index || (state.cars.length === 1 && state.active === -1);
+}
+
+/** Tapping the followed car (or "all my cars") again turns the car filter off; tapping another follows it. */
+export function toggleCar(index: number) {
+  const state = garage.get();
+  followCar(isFollowed(state, index) ? NO_CAR : index);
+}
+
 /** The cars the home screen and searches use. */
 export function followedCars(state: GarageState) {
+  if (state.active === NO_CAR) return [];
   if (state.active >= 0 && state.cars[state.active]) return [state.cars[state.active]];
   return state.cars;
 }

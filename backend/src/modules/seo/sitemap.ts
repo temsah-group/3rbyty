@@ -4,7 +4,7 @@ import { VISIBLE, type PartModel } from '../parts/part.model.js';
 import { OPEN_SHOP, type ShopModel } from '../shops/shop.model.js';
 
 /** The pages of the website that are the same for everyone. */
-const PAGES = ['/', '/search', '/shops', '/help', '/legal/terms', '/legal/privacy'];
+const PAGES = ['/', '/search', '/shops', '/help', '/app', '/legal/terms', '/legal/privacy'];
 /** One sitemap holds 50,000 addresses at most; the newest parts go first. */
 const MAX_PARTS = 45_000;
 

@@ -9,10 +9,11 @@ import { categoryIcon, conditionLook, PartGrid, PartGridSkeleton, PartRow } from
 import { Button, cx, ErrorState, Img, Input, Select } from '@/components/ui';
 import { get } from '@/lib/api';
 import { carId, carsParam, CATEGORIES, CONDITIONS, GOVERNORATES, OTHER_BRAND, useAppConfig, useCars, useLabels } from '@/lib/catalog';
-import { addCar, followCar, followedCars, garage, MAX_CARS, recent } from '@/lib/collections';
+import { addCar, followedCars, garage, isFollowed, MAX_CARS, recent, toggleCar } from '@/lib/collections';
 import { useI18n } from '@/lib/i18n';
 import type { CarBrand, Category, Condition, HomeData, Part } from '@/lib/types';
 import { SITE_URL, useJsonLd, usePageMeta } from '@/lib/seo';
+import { SOCIAL } from '@/lib/social';
 import { AskBanner } from '@/components/AskBanner';
 
 function Section({ title, subtitle, link, children }: { title: string; subtitle?: string; link?: string; children: ReactNode }) {
@@ -519,15 +520,17 @@ function MyGarage() {
   }
 
   const title =
-    followed.length === 1
-      ? tr(`قطع غيار ${labels.car(followed[0])}`, `Parts for your ${labels.car(followed[0])}`)
-      : tr('قطع غيار عربياتك', 'Parts for your cars');
+    followed.length === 0
+      ? tr('عربياتي', 'My cars')
+      : followed.length === 1
+        ? tr(`قطع غيار ${labels.car(followed[0])}`, `Parts for your ${labels.car(followed[0])}`)
+        : tr('قطع غيار عربياتك', 'Parts for your cars');
 
   return (
     <Section title={title} subtitle={tr('قطع متوافقة مع عربيتك من البياعين والمحلات', 'Parts that fit, from sellers and shops')} link={query ? `/search?cars=${encodeURIComponent(query)}` : '/search'}>
       <div role="radiogroup" aria-label={tr('عربياتي', 'My cars')} className="no-scrollbar -mx-4 mb-6 flex items-stretch gap-3 overflow-x-auto px-4 pb-2 pt-1 md:mx-0 md:px-0">
         {state.cars.length > 1 && (
-          <CarChoice active={state.active === -1} onClick={() => followCar(-1)}>
+          <CarChoice active={isFollowed(state, -1)} onClick={() => toggleCar(-1)}>
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-navy text-white">
               <Car className="h-5 w-5" />
             </span>
@@ -540,7 +543,7 @@ function MyGarage() {
         {state.cars.map((car, i) => {
           const brand = labels.brands.find((b) => b.id === car.brandId);
           return (
-            <CarChoice key={carId(car)} active={state.cars.length === 1 || state.active === i} onClick={() => followCar(i)}>
+            <CarChoice key={carId(car)} active={isFollowed(state, i)} onClick={() => toggleCar(i)}>
               <span className="flex h-11 w-12 shrink-0 items-center justify-center rounded-xl bg-canvas">
                 {brand ? <BrandLogo brand={brand} className="h-7 w-9 text-base" /> : <Car className="h-5 w-5" />}
               </span>
@@ -570,7 +573,9 @@ function MyGarage() {
           {tr('تعديل', 'Edit')}
         </button>
       </div>
-      {parts.isError ? (
+      {!query ? (
+        <EmptyNote>{tr('اختار عربية عشان نوريك القطع اللي بتركب عليها بس.', 'Pick a car to see only the parts that fit it.')}</EmptyNote>
+      ) : parts.isError ? (
         <ErrorState error={parts.error} onRetry={() => parts.refetch()} />
       ) : parts.data ? (
         parts.data.items.length ? (
@@ -597,7 +602,7 @@ export default function Home() {
         '@id': `${SITE_URL}/#website`,
         url: `${SITE_URL}/`,
         name: 'عربيتي',
-        alternateName: '3arabity',
+        alternateName: ['3rbyty', 'عربيتي 3rbyty', '3arabity'],
         inLanguage: 'ar-EG',
         potentialAction: {
           '@type': 'SearchAction',
@@ -609,9 +614,10 @@ export default function Home() {
         '@type': 'Organization',
         '@id': `${SITE_URL}/#organization`,
         name: 'عربيتي',
-        alternateName: '3arabity',
+        alternateName: ['3rbyty', 'عربيتي 3rbyty', '3arabity'],
         url: `${SITE_URL}/`,
-        logo: `${SITE_URL}/icon-192.png`,
+        logo: `${SITE_URL}/icon-512.png`,
+        sameAs: SOCIAL.map((page) => page.url),
       },
     ],
   });

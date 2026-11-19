@@ -5,6 +5,8 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { BrandSelect, withOtherBrand, YearField, yearOk } from '@/components/cars';
 import { Button, cx, Dialog, ErrorState, Field, Img, Input, PageSpinner, Select, Textarea, TextField, useToast } from '@/components/ui';
+import { MicButton } from '@/components/MicButton';
+import { VoiceFill, type SpokenFields } from '@/components/VoiceFill';
 import { PickSelect } from '@/components/PickSelect';
 import { ApiError, get, patch, post, upload } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -385,6 +387,36 @@ export default function Sell() {
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
 
+  /** What the seller said, put in the fields it fills; the rest stay as they were. */
+  const fillFromSpeech = (spoken: SpokenFields) => {
+    setDraft((d) => ({
+      ...d,
+      name: spoken.name ?? d.name,
+      category: spoken.category ?? d.category,
+      condition: spoken.condition ?? d.condition,
+      isOriginal: spoken.isOriginal ?? d.isOriginal,
+      partNumber: spoken.partNumber ?? d.partNumber,
+      description: spoken.description ?? d.description,
+      price: spoken.price ? String(spoken.price) : d.price,
+      fitsAllCars: spoken.fitsAllCars || (spoken.fitments.length ? false : d.fitsAllCars),
+      fitments: spoken.fitments.length ? spoken.fitments : d.fitments,
+    }));
+    setErrors({});
+    const filled = [
+      spoken.name && tr('الاسم', 'name'),
+      spoken.category && tr('القسم', 'category'),
+      spoken.condition && tr('الحالة', 'condition'),
+      (spoken.fitments.length > 0 || spoken.fitsAllCars) && tr('العربيات', 'cars'),
+      spoken.price && tr('السعر', 'price'),
+      spoken.description && tr('الوصف', 'description'),
+    ].filter(Boolean);
+    toast(
+      filled.length
+        ? tr(`ملينا ${filled.join('، ')}. راجعهم وضيف الصور.`, `Filled in the ${filled.join(', ')}. Check them and add photos.`)
+        : tr('مقدرناش نطلع بيانات من الكلام، جرّب تاني بوضوح.', "We couldn't get any details from that, try again clearly."),
+    );
+  };
+
   const steps = [tr('القطعة', 'Part'), tr('العربيات', 'Cars'), tr('الصور', 'Photos'), tr('السعر', 'Price'), tr('المراجعة', 'Review')];
 
   const check = (s: number) => {
@@ -578,7 +610,13 @@ export default function Sell() {
         {shows(0) && (
           <div className={cx('space-y-5', quick && 'rounded-2xl bg-white p-5 ring-1 ring-line md:p-6')}>
             {heading(0)}
-            <TextField id="part-name" label={tr('اسم القطعة', 'Part name')} placeholder={tr('مثلاً: طقم تيل فرامل أمامي', 'e.g. Front brake pad set')} value={draft.name} onChange={(e) => set('name', e.target.value)} error={errors.name} maxLength={100} />
+            {!editing && <VoiceFill onFilled={fillFromSpeech} />}
+            <Field label={tr('اسم القطعة', 'Part name')} error={errors.name} htmlFor="part-name">
+              <div className="flex gap-2">
+                <Input id="part-name" placeholder={tr('مثلاً: طقم تيل فرامل أمامي', 'e.g. Front brake pad set')} value={draft.name} onChange={(e) => set('name', e.target.value)} invalid={Boolean(errors.name)} maxLength={100} />
+                <MicButton label={tr('قول اسم القطعة', 'Say the part name')} onText={(text) => set('name', text.slice(0, 100))} />
+              </div>
+            </Field>
             <Field label={tr('القسم', 'Category')} error={errors.category}>
               <Choice options={CATEGORIES.map((c) => ({ id: c.id, label: lang === 'ar' ? c.ar : c.en }))} value={draft.category} onChange={(v) => set('category', v)} />
             </Field>
@@ -590,7 +628,10 @@ export default function Sell() {
             </Field>
             <TextField label={tr('رقم القطعة (اختياري)', 'Part number (optional)')} dir="ltr" value={draft.partNumber} onChange={(e) => set('partNumber', e.target.value)} maxLength={40} error={errors.partNumber} />
             <Field label={tr('الوصف (اختياري)', 'Description (optional)')} error={errors.description} hint={`${draft.description.length}/1000`}>
-              <Textarea value={draft.description} onChange={(e) => set('description', e.target.value)} maxLength={1000} placeholder={tr('حالتها، فيها ضمان ولا لأ، أي حاجة المشتري محتاج يعرفها', 'Its state, any warranty, anything a buyer should know')} />
+              <div className="flex items-start gap-2">
+                <Textarea value={draft.description} onChange={(e) => set('description', e.target.value)} maxLength={1000} placeholder={tr('حالتها، فيها ضمان ولا لأ، أي حاجة المشتري محتاج يعرفها', 'Its state, any warranty, anything a buyer should know')} />
+                <MicButton label={tr('قول الوصف', 'Say the description')} onText={(text) => setDraft((d) => ({ ...d, description: `${d.description.trim()} ${text}`.trim().slice(0, 1000) }))} />
+              </div>
             </Field>
           </div>
         )}

@@ -32,6 +32,7 @@ export function HelpChat() {
             setOpen(true);
           }}
           onPointerEnter={() => setLoaded(true)}
+          data-nosnippet=""
           className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] end-4 z-30 flex h-14 items-center gap-2 rounded-full bg-navy px-4 text-white shadow-lg ring-4 ring-white/70 transition hover:bg-navy-deep md:bottom-6 md:end-6"
           aria-label={tr('اسأل مساعد عربيتي', 'Ask the 3arabity assistant')}
         >
