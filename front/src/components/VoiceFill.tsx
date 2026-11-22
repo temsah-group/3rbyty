@@ -1,9 +1,9 @@
-import { Loader2, Mic, Square } from 'lucide-react';
+import { Loader2, Mic, Pencil, RotateCcw, Square } from 'lucide-react';
 import { useState } from 'react';
 
 import { ApiError, post } from '@/lib/api';
 import { useAppConfig, useCars } from '@/lib/catalog';
-import { parseSpokenListing } from '@/lib/listing-parse';
+import { likeliestListing, parseSpokenListing } from '@/lib/listing-parse';
 import { useI18n } from '@/lib/i18n';
 import { useDictation } from '@/lib/speech';
 import type { Category, Condition, Fitment } from '@/lib/types';
@@ -35,8 +35,13 @@ export function VoiceFill({ onFilled }: { onFilled: (fields: SpokenFields) => vo
   const toast = useToast();
   const smart = useAppConfig().data?.features?.voiceListing ?? false;
   const [sorting, setSorting] = useState(false);
+  // What was heard, shown after filling so a misheard word can be put right.
+  const [said, setSaid] = useState('');
+  const [editing, setEditing] = useState(false);
 
   const sort = async (text: string) => {
+    setSaid(text);
+    setEditing(false);
     const locally = () => onFilled(parseSpokenListing(text, cars));
     if (!smart) {
       locally();
@@ -53,7 +58,7 @@ export function VoiceFill({ onFilled }: { onFilled: (fields: SpokenFields) => vo
       setSorting(false);
     }
   };
-  const dictation = useDictation(sort, { lang, long: true });
+  const dictation = useDictation(sort, { lang, long: true, choose: (guesses) => likeliestListing(guesses, cars) });
   if (!dictation.supported) return null;
 
   const busy = dictation.listening || sorting;
@@ -86,9 +91,50 @@ export function VoiceFill({ onFilled }: { onFilled: (fields: SpokenFields) => vo
           </p>
         </div>
       </div>
-      {dictation.error && dictation.error !== 'no-speech' && !busy && (
+      {said && !busy && (
+        <div className="mt-3 rounded-xl bg-white/80 p-3 ring-1 ring-line">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold text-ink-muted">{tr('سمعناك بتقول:', 'We heard:')}</span>
+            {!editing && (
+              <button type="button" onClick={() => setEditing(true)} className="flex items-center gap-1 text-xs font-bold text-orange-deep hover:underline">
+                <Pencil className="h-3.5 w-3.5" />
+                {tr('صلّح الكلام', 'Fix the words')}
+              </button>
+            )}
+          </div>
+          {editing ? (
+            <>
+              <textarea
+                value={said}
+                onChange={(event) => setSaid(event.target.value)}
+                rows={3}
+                dir="auto"
+                className="mt-2 w-full rounded-lg border border-line p-2 text-sm leading-6 focus:border-orange focus:outline-none"
+                aria-label={tr('اللي سمعناه', 'What we heard')}
+              />
+              <button
+                type="button"
+                onClick={() => said.trim() && void sort(said.trim())}
+                className="mt-2 flex items-center gap-1.5 rounded-lg bg-navy px-3 py-1.5 text-sm font-bold text-white hover:bg-navy/90"
+              >
+                <RotateCcw className="h-4 w-4" />
+                {tr('املا تاني من الكلام ده', 'Fill again from this')}
+              </button>
+            </>
+          ) : (
+            <p className="mt-1 text-sm leading-6 text-ink" dir="auto">
+              {said}
+            </p>
+          )}
+        </div>
+      )}
+      {dictation.error && !busy && (
         <p className="mt-2 text-sm text-red-700" role="alert">
-          {dictation.error === 'denied' ? tr('اسمح للموقع يستخدم المايك من إعدادات المتصفح.', 'Allow the microphone for this site in your browser settings.') : tr('المايك مشتغلش، جرّب تاني.', "The microphone didn't work, try again.")}
+          {dictation.error === 'denied'
+            ? tr('اسمح للموقع يستخدم المايك من إعدادات المتصفح.', 'Allow the microphone for this site in your browser settings.')
+            : dictation.error === 'no-speech'
+              ? tr('مسمعناش حاجة. قرّب الموبايل من بوقك واتكلم بصوت واضح.', "We didn't hear anything. Hold the phone closer and speak clearly.")
+              : tr('المايك مشتغلش، جرّب تاني.', "The microphone didn't work, try again.")}
         </p>
       )}
     </div>

@@ -424,16 +424,16 @@ describe('the home screen', () => {
     expect(all.fittingCount).toBe(0);
 
     // Narrowed to a car: the count ignores the condition, the lists do not.
-    // Featured is the paid spot everyone sees: the ones that fit first, then the other featured.
+    // Featured follows the car and the condition like the rest.
     const used = await home('?cars=toyota:corolla:2016&condition=USED');
-    expect(used.featured.map((p) => p.id)).toEqual([corollaUsed, corollaNew]);
+    expect(used.featured.map((p) => p.id)).toEqual([corollaUsed]);
     expect(used.latest.map((p) => p.id)).toEqual([corollaUsed]);
     const corollaCount = 2 + 7; // the new and used pads, and the seven others
     expect(used.fittingCount).toBe(corollaCount);
     const hyundai = await home('?cars=hyundai:elantra:2014');
     expect(hyundai.latest.map((p) => p.id)).toEqual([elantra]);
-    // No featured part fits it: the strip still shows the featured ones (never the sold one).
-    expect(hyundai.featured.map((p) => p.id)).toEqual([corollaUsed, corollaNew]);
+    // No featured part fits it: none shown (not someone else's car's parts).
+    expect(hyundai.featured).toEqual([]);
     expect(hyundai.fittingCount).toBe(1);
 
     await app.api.get('/api/v1/parts/home?condition=SHINY').expect(400);

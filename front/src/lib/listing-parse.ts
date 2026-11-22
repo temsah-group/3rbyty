@@ -44,6 +44,8 @@ const UNITS: Record<string, number> = {
   تلاتميه: 300, اربعميه: 400, تمانميه: 800, ستمايه: 600, سبعمايه: 700,
   خمسميه: 500, خمسمائه: 500, ستميه: 600, ستمائه: 600, سبعميه: 700, سبعمائه: 700, تمنميه: 800, ثمانمائه: 800, تسعميه: 900, تسعمائه: 900,
 };
+/** The same, spelled the way [fold] leaves words ("ثمانمائة" → "ثمانمايه"). */
+const UNITS_FOLDED: Record<string, number> = Object.fromEntries(Object.entries(UNITS).map(([word, value]) => [fold(word), value]));
 const THOUSAND = new Set(['الف', 'الاف', 'تلاف', 'thousand', 'k']);
 const TWO_THOUSAND = new Set(['الفين', 'الفان']);
 
@@ -52,7 +54,7 @@ function numberWord(word: string): { value: number; kind: 'n' | 'thousand' | 'tw
   const w = word.startsWith('و') && word.length > 2 && !/^\d/.test(word) ? word.slice(1) : word;
   for (const candidate of [w, word]) {
     if (/^\d+([.,]\d+)?$/.test(candidate)) return { value: Number(candidate.replace(',', '.')), kind: 'n' };
-    if (candidate in UNITS) return { value: UNITS[candidate]!, kind: 'n' };
+    if (candidate in UNITS_FOLDED) return { value: UNITS_FOLDED[candidate]!, kind: 'n' };
     if (THOUSAND.has(candidate)) return { value: 1000, kind: 'thousand' };
     if (TWO_THOUSAND.has(candidate)) return { value: 2000, kind: 'two-thousand' };
   }
@@ -101,7 +103,7 @@ const PRICE_CUE = /^(بسعر|السعر|سعرها|سعره|بالسعر|سعر
 const CURRENCY = /^(جنيه|جنيها|جنيهات|جنية|ج|جم|pound|pounds|le|egp)$/;
 const YEAR_CUE = /^(موديل|موديلات|سنه|من)$/;
 const RANGE_TO = /^(ل|لـ|لل|الى|لحد|لغايه|حتي|to|-)$/;
-const FILLER = /^(عندي|معايا|معاي|عايز|ابيع|للبيع|بيع|قطعه|في|يا|بص|دي|ده|هي|هو|انا)$/;
+const FILLER = /^(عندي|معايا|معاي|عايز|عاوز|محتاج|حابب|ابيع|هبيع|للبيع|بيع|قطعه|في|يا|بص|دي|ده|هي|هو|انا)$/;
 const FITS = /^(يركب|تركب|بتركب|بيركب|ل|لـ|على|علي|لعربيه|للعربيات|عربيه|for)$/;
 /** A number followed by one of these is part of the name ("جنوط 16 بوصه", "بطاريه 70 امبير"). */
 const UNIT = /^(بوصه|انش|امبير|سم|مم|ملي|لتر|cc|سي|وات|فولت|v|a|mm|ton|طن)$/;
@@ -121,7 +123,7 @@ const CATEGORY_WORDS: [RegExp, Category][] = [
 /** Common ways makes are said that the list doesn't spell. */
 const MAKE_ALIASES: Record<string, string[]> = {
   chevrolet: ['شفروليه', 'شيفروليت', 'شفروليت', 'شيفورليه'],
-  hyundai: ['هيونداى', 'هيوندا', 'هيونداي'],
+  hyundai: ['هيونداى', 'هيوندا', 'هيونداي', 'هونداي'],
   'mercedes-benz': ['مرسيدس', 'مارسيدس', 'بنز', 'mercedes'],
   volkswagen: ['فولكس', 'فلوكس', 'vw'],
   mitsubishi: ['متسوبيشي', 'ميتسوبيشى'],
@@ -163,6 +165,54 @@ export function saidAt(tokens: string[], at: number, phrase: string[]): boolean 
   });
 }
 
+/** How many letters to add, drop or change to turn [a] into [b]. */
+function distance(a: string, b: string): number {
+  if (Math.abs(a.length - b.length) > 2) return 3;
+  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(previous[j]! + 1, row[j - 1]! + 1, previous[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    previous = row;
+  }
+  return previous[b.length]!;
+}
+
+/** Words that mean something else to the form, so are never a misheard car. */
+function mayBeCar(token: string, afterMake = false): boolean {
+  if (token.length < 4 || /\d/.test(token) || numberWord(token)) return false;
+  const known = [ORIGINAL, AFTERMARKET, PRICE_CUE, CURRENCY, YEAR_CUE, FILLER, FITS, UNIT, ...CONDITIONS.map(([p]) => p)];
+  if (known.some((p) => p.test(token))) return false;
+  // Right after a make, a word starting like a part ("سيرتو", not "سير") is still its model.
+  return afterMake || !CATEGORY_WORDS.some(([p]) => p.test(token));
+}
+
+/**
+ * The one-word make or model [token] is closest to, if it is near enough to be
+ * that name misheard: a letter off for short names, two for long ones. Nothing
+ * when two different cars are as close.
+ */
+function nearest(token: string, phrases: Phrase[], most?: number): Phrase | null {
+  const forms = [token, ...(/^(ال|[لبو])/.test(token) ? [token.replace(/^(ال|[لبو])/, '')] : [])].filter((w) => w.length >= 4);
+  let best: Phrase[] = [];
+  let bestDistance = Infinity;
+  for (const phrase of phrases) {
+    const name = phrase.words.length === 1 ? phrase.words[0]! : '';
+    if (name.length < 4) continue;
+    const allowed = Math.min(most ?? 2, name.length >= 6 ? 2 : 1);
+    for (const form of forms) {
+      const d = distance(form, name);
+      if (d > allowed || d > bestDistance) continue;
+      if (d < bestDistance) best = [];
+      bestDistance = d;
+      best.push(phrase);
+    }
+  }
+  const cars = new Set(best.map((p) => `${p.brand.id}/${p.model?.id ?? ''}`));
+  return cars.size === 1 ? best[0]! : null;
+}
+
 const thisYear = () => new Date().getFullYear();
 const isYear = (n: number) => Number.isInteger(n) && n >= 1950 && n <= thisYear() + 1;
 
@@ -170,6 +220,8 @@ export function parseSpokenListing(text: string, brands: CarBrand[]): ParsedList
   const original = text.replace(/\s+/g, ' ').trim();
   // Words, with "لـ2018" split into "لـ" and "2018", and "1800ج" into "1800" and "ج".
   const raw = fold(original)
+    // "4,500" and "4٬500" are one number, not 4 and 500.
+    .replace(/(\d)[,٬](\d{3})(?!\d)/g, '$1$2')
     .replace(/([لب])ـ?(\d)/g, '$1 $2')
     .replace(/(\d)([^\d\s.,])/g, '$1 $2')
     .replace(/[،,؛;:!?()"]/g, ' ')
@@ -187,12 +239,15 @@ export function parseSpokenListing(text: string, brands: CarBrand[]): ParsedList
   type Found = { at: number; end: number; brand: CarBrand; model: CarBrand['models'][number] | null; fromYear: number | null; toYear: number | null };
   const cars: Found[] = [];
   for (let i = 0; i < tokens.length; i++) {
-    const make = makes.find((p) => saidAt(tokens, i, p.words));
+    // A make as said, or misheard by a letter or two ("تيوتا", "شفرليه").
+    const make = makes.find((p) => saidAt(tokens, i, p.words)) ?? (mayBeCar(tokens[i]!) ? nearest(tokens[i]!, makes) : null);
     if (make) {
       let end = i + make.words.length;
       let model: Found['model'] = null;
       for (let j = end; j < Math.min(tokens.length, end + 2) && !model; j++) {
-        const found = models.find((p) => p.brand === make.brand && saidAt(tokens, j, p.words));
+        const own = models.filter((p) => p.brand === make.brand);
+        // Its model as said, or close to one of this make's models ("كرولا" after Toyota).
+        const found = own.find((p) => saidAt(tokens, j, p.words)) ?? (mayBeCar(tokens[j]!, true) ? nearest(tokens[j]!, own) : null);
         if (found) {
           model = found.model;
           end = j + found.words.length;
@@ -207,8 +262,10 @@ export function parseSpokenListing(text: string, brands: CarBrand[]): ParsedList
     if (/^\d+$/.test(tokens[i]!)) continue;
     const matches = models.filter((p) => saidAt(tokens, i, p.words));
     const brandsMatched = new Set(matches.map((p) => p.brand.id));
-    if (matches.length && brandsMatched.size === 1 && tokens[i]!.length >= 3) {
-      const found = matches[0]!;
+    // Misheard alone ("سيرتو"): only a near-certain match, one letter off, one make.
+    const close = !matches.length && mayBeCar(tokens[i]!) ? nearest(tokens[i]!, models, 1) : null;
+    if ((matches.length && brandsMatched.size === 1 && tokens[i]!.length >= 3) || close) {
+      const found = close ?? matches[0]!;
       cars.push({ at: i, end: i + found.words.length, brand: found.brand, model: found.model, fromYear: null, toYear: null });
       take(i, found.words.length);
       i += found.words.length - 1;
@@ -358,4 +415,28 @@ export function parseSpokenListing(text: string, brands: CarBrand[]): ParsedList
     fitsAllCars: fitsAllCars && fitments.length === 0,
     fitments: fitsAllCars ? [] : fitments,
   };
+}
+
+/**
+ * Of the recogniser's guesses at what was said, the one that reads most like a
+ * listing: the most parts of the form it fills (a car counts double), and on a
+ * tie the recogniser's own order.
+ */
+export function likeliestListing(guesses: string[], brands: CarBrand[]): string {
+  let best = guesses[0] ?? '';
+  let bestScore = -1;
+  for (const guess of guesses) {
+    const read = parseSpokenListing(guess, brands);
+    const score =
+      read.fitments.reduce((sum, f) => sum + (f.modelId ? 3 : 2), 0) +
+      Number(read.category !== null) +
+      Number(read.condition !== null) +
+      Number(read.isOriginal !== null) +
+      Number(read.price !== null);
+    if (score > bestScore) {
+      best = guess;
+      bestScore = score;
+    }
+  }
+  return best;
 }

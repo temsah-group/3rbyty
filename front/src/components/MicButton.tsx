@@ -17,6 +17,7 @@ export function MicButton({ onText, label, className }: { onText: (text: string)
 
   useEffect(() => {
     if (dictation.error === 'denied') toast(tr('اسمح للموقع يستخدم المايك من إعدادات المتصفح', 'Allow the microphone for this site in your browser settings'));
+    if (dictation.error === 'no-speech') toast(tr('مسمعناش حاجة، قرّب الموبايل واتكلم تاني', "We didn't hear anything, hold the phone closer and try again"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dictation.error]);
 

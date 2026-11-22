@@ -69,10 +69,13 @@ export class PartsService {
   async list(query: ListQuery, viewerId?: string): Promise<Page & { facets?: object }> {
     const filter = this.searchFilter(query);
     const words = searchWords(query.q).words;
-    const page =
-      query.sort === 'RELEVANCE' && words.length
-        ? await this.bestFirst(filter, words, query.cursor, query.limit, viewerId)
-        : await this.page(filter, query.sort === 'RELEVANCE' ? 'NEWEST' : query.sort, query.cursor, query.limit, viewerId);
+    // Best match (with words), or newest with a car filter (its own parts before
+    // the every-car ones): ranked. Prices, and plain newest: by the field.
+    const byCar = Boolean(query.cars);
+    const ranked = (query.sort === 'RELEVANCE' && words.length > 0) || ((query.sort === 'NEWEST' || query.sort === 'RELEVANCE') && byCar);
+    const page = ranked
+      ? await this.bestFirst(filter, query.sort === 'RELEVANCE' ? words : [], byCar, query.cursor, query.limit, viewerId)
+      : await this.page(filter, query.sort === 'RELEVANCE' ? 'NEWEST' : query.sort, query.cursor, query.limit, viewerId);
     if (query.cursor) return page;
     const [total, facets] = await Promise.all([
       this.parts.countDocuments(filter).exec(),
@@ -99,35 +102,34 @@ export class PartsService {
     const filter: QueryFilter<Part> = { ...forSale };
     if (query.condition) filter.condition = query.condition;
     if (query.cars) Object.assign(filter, fitsAny(query.cars));
-    const newest = { listedAt: -1, _id: -1 } as const;
-    const [fitting, latest, fittingCount] = await Promise.all([
-      this.parts
-        .find({ ...filter, isFeatured: true })
-        .sort(newest)
-        .limit(HOME_FEATURED)
-        .exec(),
-      this.parts.find(filter).sort(newest).limit(HOME_LATEST).exec(),
+    // With a car: only what fits it (featured too), parts listed for it before
+    // the ones for every car (oils), so the car's own parts aren't buried.
+    const [featured, latest, fittingCount] = await Promise.all([
+      this.carFirst({ ...filter, isFeatured: true }, Boolean(query.cars), HOME_FEATURED),
+      this.carFirst(filter, Boolean(query.cars), HOME_LATEST),
       query.cars
         ? this.parts.countDocuments({ ...forSale, ...fitsAny(query.cars) }).exec()
         : Promise.resolve(0),
     ]);
-    // Featured is the paid spot: everyone sees it. Those for the visitor's car
-    // come first, then the other featured parts, up to the strip's length.
-    const others =
-      query.cars && fitting.length < HOME_FEATURED
-        ? await this.parts
-            .find({ ...forSale, isFeatured: true, _id: { $nin: fitting.map((part) => part._id) } })
-            .sort(newest)
-            .limit(HOME_FEATURED - fitting.length)
-            .exec()
-        : [];
-    const featured = [...fitting, ...others];
     const presented = await this.present([...featured, ...latest], viewerId);
     return {
       featured: presented.slice(0, featured.length),
       latest: presented.slice(featured.length),
       fittingCount,
     };
+  }
+
+  /**
+   * The newest [limit] parts of [filter]; with a car filter, those listed for
+   * the car first, then the ones that fit every car.
+   */
+  private async carFirst(filter: QueryFilter<Part>, byCar: boolean, limit: number): Promise<PartDocument[]> {
+    const newest = { listedAt: -1, _id: -1 } as const;
+    if (!byCar) return this.parts.find(filter).sort(newest).limit(limit).exec();
+    const forIt = await this.parts.find({ ...filter, fitsAllCars: { $ne: true } }).sort(newest).limit(limit).exec();
+    if (forIt.length >= limit) return forIt;
+    const anyCar = await this.parts.find({ ...filter, fitsAllCars: true }).sort(newest).limit(limit - forIt.length).exec();
+    return [...forIt, ...anyCar];
   }
 
   async mine(userId: string, cursor: string | undefined, limit: number): Promise<Page> {
@@ -376,11 +378,12 @@ export class PartsService {
   }
 
   /**
-   * Search results best match first: a part whose name has more of the words
-   * (and has them in that order) before one found by its car or category;
+   * Results best first: a part whose name has more of the [words] (and has
+   * them in that order) before one found by its car or category; with a car
+   * filter ([byCar]), parts listed for the car before those for every car;
    * then the newest. Paged by position, as the order isn't one stored field.
    */
-  private async bestFirst(filter: QueryFilter<Part>, words: string[], cursor: string | undefined, limit: number, viewerId?: string): Promise<Page> {
+  private async bestFirst(filter: QueryFilter<Part>, words: string[], byCar: boolean, cursor: string | undefined, limit: number, viewerId?: string): Promise<Page> {
     const offset = cursor?.startsWith('r') ? Math.max(0, Number(cursor.slice(1)) || 0) : 0;
     const inName = (pattern: string) => ({ $regexMatch: { input: '$name', regex: pattern, options: 'i' } });
     const phrase = words.length > 1 ? phrasePattern(words) : null;
@@ -391,16 +394,19 @@ export class PartsService {
           $addFields: {
             _score: {
               $add: [
+                0,
                 ...words.map((word) => ({ $cond: [inName(namePattern(word)), 3, 0] })),
                 // The whole search, in order ("شورت بلوك"), in the name.
                 ...(phrase ? [{ $cond: [inName(phrase), 2, 0] }] : []),
                 // The first word first in the name ("مارش …" for "مارش").
-                { $cond: [inName(leadingPattern(words[0]!)), 1, 0] },
+                ...(words.length ? [{ $cond: [inName(leadingPattern(words[0]!)), 1, 0] }] : []),
               ],
             },
+            // Listed for the car rather than for every car.
+            _forCar: byCar ? { $cond: [{ $eq: ['$fitsAllCars', true] }, 0, 1] } : 0,
           },
         },
-        { $sort: { _score: -1, listedAt: -1, _id: -1 } },
+        { $sort: { _score: -1, _forCar: -1, listedAt: -1, _id: -1 } },
         { $skip: offset },
         { $limit: limit + 1 },
       ])

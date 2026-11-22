@@ -5,9 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * free, in Egyptian Arabic. Browsers without one get no microphone buttons.
  */
 
-interface RecognitionResult {
+interface RecognitionResult extends ArrayLike<{ transcript: string; confidence?: number }> {
   readonly isFinal: boolean;
-  readonly 0: { transcript: string };
 }
 interface RecognitionEvent extends Event {
   readonly resultIndex: number;
@@ -17,6 +16,7 @@ interface Recognition extends EventTarget {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
+  maxAlternatives: number;
   start(): void;
   stop(): void;
   abort(): void;
@@ -42,63 +42,114 @@ export type DictationError = 'denied' | 'no-speech' | 'failed';
 /**
  * Listens until the speaker stops (or [stop] is called), showing what it hears
  * so far in [heard], then hands the whole of what was said to [onDone].
- * [long] keeps listening through short pauses, for a whole sentence or two.
+ * [long] keeps listening through pauses, for a whole sentence or two, even on
+ * phones whose recogniser gives up at the first breath. [choose] picks the
+ * likeliest of the recogniser's guesses for each stretch of speech.
  */
-export function useDictation(onDone: (text: string) => void, { lang = 'ar', long = false }: { lang?: 'ar' | 'en'; long?: boolean } = {}) {
+export function useDictation(
+  onDone: (text: string) => void,
+  { lang = 'ar', long = false, choose }: { lang?: 'ar' | 'en'; long?: boolean; choose?: (guesses: string[]) => string } = {},
+) {
   const [listening, setListening] = useState(false);
   const [heard, setHeard] = useState('');
   const [error, setError] = useState<DictationError | null>(null);
   const recognition = useRef<Recognition | null>(null);
+  const stopped = useRef(false);
   const done = useRef(onDone);
   done.current = onDone;
+  const pick = useRef(choose);
+  pick.current = choose;
 
-  const stop = useCallback(() => recognition.current?.stop(), []);
+  const stop = useCallback(() => {
+    stopped.current = true;
+    recognition.current?.stop();
+  }, []);
 
   const start = useCallback(() => {
     if (!Recogniser) return;
     active?.abort();
-    const r = new Recogniser();
-    r.lang = lang === 'ar' ? 'ar-EG' : 'en-US';
-    r.continuous = long;
-    r.interimResults = true;
+    stopped.current = false;
+    const began = Date.now();
     let final = '';
     let failed: DictationError | null = null;
-    r.onresult = (event) => {
+
+    /** The best guess of one result: [choose]'s, else the recogniser's first. */
+    const best = (result: RecognitionResult) => {
+      const guesses = Array.from({ length: result.length }, (_, i) => result[i]!.transcript.trim()).filter(Boolean);
+      if (guesses.length > 1 && pick.current) return pick.current(guesses);
+      return guesses[0] ?? '';
+    };
+
+    const listen = () => {
+      const r = new Recogniser!();
+      r.lang = lang === 'ar' ? 'ar-EG' : 'en-US';
+      r.continuous = long;
+      r.interimResults = true;
+      r.maxAlternatives = pick.current ? 5 : 1;
+      // What this session has heard, final or not: the words said just before
+      // "stop" often never become final, and are kept anyway.
+      let sessionFinal = '';
       let interim = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i]!;
-        if (result.isFinal) final += `${result[0].transcript} `;
-        else interim += result[0].transcript;
-      }
-      setHeard(`${final}${interim}`.trim());
+      r.onresult = (event) => {
+        interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i]!;
+          if (result.isFinal) sessionFinal += `${best(result)} `;
+          else interim += result[0]?.transcript ?? '';
+        }
+        setHeard(`${final}${sessionFinal}${interim}`.trim());
+      };
+      r.onerror = (event) => {
+        // Aborted: another microphone took over, or the page went away.
+        if (event.error === 'aborted') stopped.current = true;
+        failed = event.error === 'not-allowed' || event.error === 'service-not-allowed' ? 'denied' : event.error === 'no-speech' ? 'no-speech' : event.error === 'aborted' ? null : 'failed';
+      };
+      r.onend = () => {
+        final += sessionFinal + (interim ? `${interim} ` : '');
+        // A phone ending a long dictation at a pause: carry on, until the
+        // speaker stops it, stays quiet, or a minute and a half has gone by.
+        const goOn = long && !stopped.current && !failed && sessionFinal + interim !== '' && Date.now() - began < 90_000;
+        if (goOn && recognition.current === r) {
+          try {
+            listen();
+            return;
+          } catch {
+            // Fall through and finish with what was heard.
+          }
+        }
+        if (active === r) active = null;
+        recognition.current = null;
+        setListening(false);
+        setHeard('');
+        const text = final.replace(/\s+/g, ' ').trim();
+        if (text) done.current(text);
+        else setError(failed ?? 'no-speech');
+      };
+      recognition.current = r;
+      active = r;
+      r.start();
     };
-    r.onerror = (event) => {
-      failed = event.error === 'not-allowed' || event.error === 'service-not-allowed' ? 'denied' : event.error === 'no-speech' ? 'no-speech' : event.error === 'aborted' ? null : 'failed';
-    };
-    r.onend = () => {
-      if (active === r) active = null;
-      recognition.current = null;
-      setListening(false);
-      setHeard('');
-      const text = final.replace(/\s+/g, ' ').trim();
-      if (text) done.current(text);
-      else setError(failed ?? 'no-speech');
-    };
-    recognition.current = r;
-    active = r;
+
     setError(null);
     setHeard('');
     setListening(true);
     try {
-      r.start();
+      listen();
     } catch {
+      recognition.current = null;
       setListening(false);
       setError('failed');
     }
   }, [lang, long]);
 
   // Leaving the page stops the microphone.
-  useEffect(() => () => recognition.current?.abort(), []);
+  useEffect(
+    () => () => {
+      stopped.current = true;
+      recognition.current?.abort();
+    },
+    [],
+  );
 
   return { supported: Boolean(Recogniser), listening, heard, error, start, stop };
 }

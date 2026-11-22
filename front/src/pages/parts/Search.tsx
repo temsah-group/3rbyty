@@ -1,4 +1,4 @@
-import { BadgeCheck, Banknote, Car, Check, ChevronDown, LayoutGrid, MapPin, Plus, Search as SearchIcon, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { BadgeCheck, Banknote, Car, Check, ChevronDown, LayoutGrid, MapPin, Plus, Search as SearchIcon, SlidersHorizontal, Sparkles, Trash2, X } from 'lucide-react';
 import { Fragment, useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -6,10 +6,10 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { BrandLogo, CarPicker } from '@/components/cars';
 import { categoryIcon, conditionLook, PartGrid, PartGridSkeleton } from '@/components/parts';
 import { SearchBox } from '@/components/search';
-import { Button, cx, Dialog, EmptyState, ErrorState, Input, Select } from '@/components/ui';
+import { Button, cx, Dialog, EmptyState, ErrorState, Input, Select, useConfirm } from '@/components/ui';
 import { carId, CATEGORIES, carsParam, CONDITIONS, GOVERNORATES, parseCarsParam, useLabels } from '@/lib/catalog';
 import { searchCarsParam } from '@/lib/search-parse';
-import { addCar, garage } from '@/lib/collections';
+import { addCar, garage, MAX_CARS, removeCar } from '@/lib/collections';
 import { useI18n } from '@/lib/i18n';
 import { LoadMore, usePaged } from '@/lib/paging';
 import type { Category, Condition, Part, SearchResult } from '@/lib/types';
@@ -51,33 +51,63 @@ function ConditionTiles({ value, onToggle }: { value: string | null; onToggle: (
   );
 }
 
-/** Parts for all the garage's cars or just one; a way to add one when it's empty. */
+/**
+ * Parts for all the garage's cars or just one; each car can be taken out of
+ * the garage from here, and another added.
+ */
 function MyCarsFilter({ value, onChange }: { value: string | null; onChange: (cars: string | null) => void }) {
   const { tr } = useI18n();
   const labels = useLabels();
+  const confirm = useConfirm();
   const { cars } = garage.use();
   const [picking, setPicking] = useState(false);
   const all = carsParam(cars);
 
-  const row = (key: string, param: string | undefined, content: ReactNode) => {
+  /** Takes car [index] out of the garage, and out of the filter if it was in it. */
+  const remove = async (index: number) => {
+    const car = cars[index]!;
+    const ok = await confirm({
+      title: tr('تشيل العربية دي؟', 'Remove this car?'),
+      body: labels.car(car),
+      confirmLabel: tr('شيلها', 'Remove'),
+      danger: true,
+    });
+    if (!ok) return;
+    if (value && (value === carsParam([car]) || value === all)) onChange(null);
+    removeCar(index);
+  };
+
+  const row = (key: string, param: string | undefined, content: ReactNode, onRemove?: () => void) => {
     const on = Boolean(param) && value === param;
     return (
-      <button
-        key={key}
-        type="button"
-        role="radio"
-        aria-checked={on}
-        onClick={() => onChange(on ? null : param ?? null)}
-        className={cx(
-          'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-start ring-1 transition',
-          on ? 'bg-orange-mist ring-2 ring-orange' : 'bg-white ring-line hover:ring-navy/30',
+      <div key={key} className="flex items-center gap-2">
+        <button
+          type="button"
+          role="radio"
+          aria-checked={on}
+          onClick={() => onChange(on ? null : param ?? null)}
+          className={cx(
+            'flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-start ring-1 transition',
+            on ? 'bg-orange-mist ring-2 ring-orange' : 'bg-white ring-line hover:ring-navy/30',
+          )}
+        >
+          {content}
+          <span className={cx('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2', on ? 'border-orange bg-orange' : 'border-line')}>
+            {on && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+          </span>
+        </button>
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="shrink-0 rounded-lg p-2 text-ink-muted transition hover:bg-red-50 hover:text-red-600"
+            aria-label={tr('شيل العربية', 'Remove the car')}
+            title={tr('شيل العربية', 'Remove the car')}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
         )}
-      >
-        {content}
-        <span className={cx('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2', on ? 'border-orange bg-orange' : 'border-line')}>
-          {on && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
-        </span>
-      </button>
+      </div>
     );
   };
 
@@ -96,7 +126,7 @@ function MyCarsFilter({ value, onChange }: { value: string | null; onChange: (ca
                 <span className="flex-1 text-sm font-extrabold">{tr('كل عربياتي', 'All my cars')}</span>
               </>,
             )}
-          {cars.map((car) => {
+          {cars.map((car, index) => {
             const brand = labels.brands.find((b) => b.id === car.brandId);
             return row(
               carId(car),
@@ -112,8 +142,15 @@ function MyCarsFilter({ value, onChange }: { value: string | null; onChange: (ca
                   <span className="block text-xs font-bold text-ink-soft tabular-nums">{car.year}</span>
                 </span>
               </>,
+              () => void remove(index),
             );
           })}
+          {cars.length < MAX_CARS && (
+            <button type="button" onClick={() => setPicking(true)} className="flex items-center gap-1.5 px-1 py-1 text-sm font-bold text-orange-deep hover:underline">
+              <Plus className="h-4 w-4" />
+              {tr('ضيف عربية', 'Add a car')}
+            </button>
+          )}
         </div>
       ) : (
         <button

@@ -100,4 +100,27 @@ describe('searching by any name for a part', () => {
     expect([first.items[0].name, second.items[0].name]).toEqual(['شنطة سيراتو', 'مساعد كيا']);
     expect(second.nextCursor).toBeNull();
   });
+
+  it('with a car chosen, puts the parts listed for it before the ones for every car', async () => {
+    const seller = await signUp(app, 'seller@example.com');
+    await listPart(app, seller.token, { name: 'تيل سكودا', category: 'BRAKES', fitments: [{ brandId: 'skoda', modelId: 'superb', fromYear: 2018, toYear: 2024 }] });
+    await listPart(app, seller.token, { name: 'مارش النترا', category: 'ELECTRICAL', fitments: [{ brandId: 'hyundai', modelId: 'elantra', fromYear: 2012, toYear: 2016 }] });
+    // Newer, and for every car: still after the Skoda's own part.
+    await listPart(app, seller.token, { name: 'زيت 5w30', category: 'FILTERS', fitments: [], fitsAllCars: true });
+    await listPart(app, seller.token, { name: 'زيت 10w40', category: 'FILTERS', fitments: [], fitsAllCars: true });
+
+    const names = async (query: Record<string, string>) =>
+      ((await app.api.get('/api/v1/parts').query(query).expect(200)).body.data.items as { name: string }[]).map((p) => p.name);
+    expect(await names({ cars: 'skoda:superb:2021' })).toEqual(['تيل سكودا', 'زيت 10w40', 'زيت 5w30']);
+    expect(await names({ cars: 'skoda:superb:2021', sort: 'RELEVANCE' })).toEqual(['تيل سكودا', 'زيت 10w40', 'زيت 5w30']);
+    // Never another car's part.
+    expect(await names({ cars: 'skoda:superb:2021' })).not.toContain('مارش النترا');
+    // Without a car: simply newest.
+    expect((await names({}))[0]).toBe('زيت 10w40');
+    // Prices still sort by price.
+    expect(await names({ cars: 'skoda:superb:2021', sort: 'PRICE_LOW' })).toHaveLength(3);
+
+    const home = (await app.api.get('/api/v1/parts/home').query({ cars: 'skoda:superb:2021' }).expect(200)).body.data as { latest: { name: string }[] };
+    expect(home.latest.map((p) => p.name)).toEqual(['تيل سكودا', 'زيت 10w40', 'زيت 5w30']);
+  });
 });

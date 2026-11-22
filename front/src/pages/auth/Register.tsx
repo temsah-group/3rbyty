@@ -9,6 +9,7 @@ import { PickSelect } from '@/components/PickSelect';
 import { ApiError, post, upload } from '@/lib/api';
 import { toE164 } from '@/lib/format';
 import { readCardLocally } from '@/lib/card-ocr';
+import { CardCropper } from '@/components/CardCropper';
 import { findPhone, type CardDetails } from '@/lib/card-parse';
 import { rememberPassword } from '@/lib/auth';
 import { governorateOptions, GOVERNORATES, useAppConfig, useLabels } from '@/lib/catalog';
@@ -60,6 +61,8 @@ export default function Register() {
   /** 0–1 while the free in-browser reader loads and reads; null otherwise. */
   const [scanProgress, setScanProgress] = useState<number | null>(null);
   const [scanNote, setScanNote] = useState<{ ok: boolean; text: string } | null>(null);
+  /** A card photo waiting to be turned upright and framed before it's read. */
+  const [cardPhoto, setCardPhoto] = useState<File | null>(null);
 
   /**
    * Fills the shop's details from a photo of its business card; the owner
@@ -189,8 +192,16 @@ export default function Register() {
                 )}
                 <p className="mt-2 text-xs text-ink-soft">{tr('هنملا الاسم والرقم والعنوان من الكارت لوحدنا. صوّره من قريب وفي نور كويس.', "We'll fill in the name, number and address from it. Shoot it close up, in good light.")}</p>
                 {/* `capture` opens the back camera on phones; the other one picks a saved photo (or a file on a computer). */}
-                <input ref={cardCamera} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden onChange={(e) => { void scanCard(e.target.files?.[0]); e.target.value = ''; }} />
-                <input ref={cardGallery} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { void scanCard(e.target.files?.[0]); e.target.value = ''; }} />
+                <input ref={cardCamera} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden onChange={(e) => { setCardPhoto(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+                <input ref={cardGallery} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { setCardPhoto(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+                <CardCropper
+                  file={cardPhoto}
+                  onCancel={() => setCardPhoto(null)}
+                  onDone={(file) => {
+                    setCardPhoto(null);
+                    void scanCard(file);
+                  }}
+                />
                 {scanNote && (
                   <p role="status" className={cx('mt-3 rounded-lg p-2 text-sm', scanNote.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700')}>
                     {scanNote.text}
