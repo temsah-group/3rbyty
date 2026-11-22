@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpLeft, ArrowUpRight, Clock, Search as SearchIcon, X } from 'lucide-react';
+import { Clock, Search as SearchIcon, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -8,6 +8,7 @@ import { get } from '@/lib/api';
 import { CATEGORIES, useLabels } from '@/lib/catalog';
 import { formatPrice } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
+import { readSearch, searchUrl, type ReadSearch } from '@/lib/search-parse';
 import { persisted } from '@/lib/store';
 import type { CarBrand, Part } from '@/lib/types';
 
@@ -75,8 +76,11 @@ export function SearchBox({
 }: {
   value: string;
   onValueChange: (q: string) => void;
-  /** Runs a full search for the text; navigates to /search when not given. */
-  onSearch?: (q: string) => void;
+  /**
+   * Runs a full search for what was typed, already read into words and filters
+   * ("مارش كورولا 2016" → "مارش" for a Corolla 2016); navigates to /search when not given.
+   */
+  onSearch?: (read: ReadSearch) => void;
   size?: 'md' | 'lg';
   className?: string;
 }) {
@@ -94,18 +98,23 @@ export function SearchBox({
   const debounced = useDebounced(q, 250);
   const parts = useQuery({
     queryKey: ['suggest', debounced],
-    queryFn: ({ signal }) => get<{ items: Part[] }>('/parts', { q: debounced, limit: 5, sort: 'NEWEST' }, signal),
+    queryFn: ({ signal }) => get<{ items: Part[] }>('/parts', { q: debounced, limit: 5, sort: 'RELEVANCE' }, signal),
     enabled: open && debounced.length >= 2,
     staleTime: 30_000,
   });
 
+  const run = (read: ReadSearch) => {
+    setOpen(false);
+    inputRef.current?.blur();
+    // The box keeps only the words left to find; the car and condition become filters.
+    onValueChange(read.q);
+    if (onSearch) onSearch(read);
+    else navigate(searchUrl(read));
+  };
   const search = (text: string) => {
     const t = text.trim();
     rememberSearch(t);
-    setOpen(false);
-    inputRef.current?.blur();
-    if (onSearch) onSearch(t);
-    else navigate(t ? `/search?q=${encodeURIComponent(t)}` : '/search');
+    run(readSearch(t, labels.brands));
   };
   const goTo = (to: string, remember?: string) => {
     if (remember) rememberSearch(remember);
@@ -114,11 +123,14 @@ export function SearchBox({
     navigate(to);
   };
 
-  // Makes and their models that match, best first: a make by name, then models.
+  // Makes and their models that match the last word being typed ("مارش كورو" → Toyota Corolla), best first.
+  const words = q.split(/\s+/).filter(Boolean);
+  const lastWord = words.at(-1) ?? '';
+  const before = words.slice(0, -1).join(' ');
   const cars = useMemo(() => {
-    const f = fold(q);
-    if (f.length < 2) return [];
-    const out: { brand: CarBrand; modelName?: string; label: string }[] = [];
+    const f = fold(lastWord);
+    if (f.length < 2 || /^\d+$/.test(f)) return [];
+    const out: { brand: CarBrand; modelId?: string; label: string }[] = [];
     for (const brand of labels.brands) {
       const brandName = pick(brand.nameAr, brand.nameEn);
       if (fold(brand.nameAr).includes(f) || fold(brand.nameEn).includes(f)) out.push({ brand, label: brandName });
@@ -126,12 +138,12 @@ export function SearchBox({
     for (const brand of labels.brands) {
       for (const model of brand.models) {
         if (fold(model.nameAr).includes(f) || fold(model.nameEn).includes(f)) {
-          out.push({ brand, modelName: pick(model.nameAr, model.nameEn), label: `${pick(brand.nameAr, brand.nameEn)} ${pick(model.nameAr, model.nameEn)}` });
+          out.push({ brand, modelId: model.id, label: `${pick(brand.nameAr, brand.nameEn)} ${pick(model.nameAr, model.nameEn)}` });
         }
       }
     }
     return out.slice(0, 4);
-  }, [q, labels.brands, pick]);
+  }, [lastWord, labels.brands, pick]);
 
   const categories = useMemo(() => {
     const f = fold(q);
@@ -139,7 +151,6 @@ export function SearchBox({
     return CATEGORIES.filter((c) => fold(c.ar).includes(f) || fold(c.en).includes(f)).slice(0, 3);
   }, [q]);
 
-  const Arrow = lang === 'ar' ? ArrowUpLeft : ArrowUpRight;
   const row = (active: boolean, extra?: string) =>
     cx('flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-start text-sm', active ? 'bg-canvas' : 'hover:bg-canvas', extra);
 
@@ -223,19 +234,24 @@ export function SearchBox({
         title: tr('عربيات', 'Cars'),
         items: cars.map((c) => ({
           key: `car-${c.label}`,
+          // The car as a filter, with whatever was typed before it as the words to find.
           go: () => {
-            onValueChange(c.label);
-            search(c.label);
+            const read = readSearch(before, labels.brands);
+            rememberSearch(`${before} ${c.label}`.trim());
+            run({ ...read, cars: [...read.cars, { brandId: c.brand.id, modelId: c.modelId ?? null, year: null }] });
           },
           render: (active) => (
             <div className={row(active)}>
               <span className="flex h-7 w-9 shrink-0 items-center justify-center">
                 <BrandLogo brand={c.brand} className="h-6 w-8 text-xs" />
               </span>
-              <span className="flex-1 truncate font-bold">
-                <Highlight text={c.label} query={q} />
+              <span className="min-w-0 flex-1 truncate">
+                {before && <span className="text-ink-soft">{before} · </span>}
+                <span className="font-bold">
+                  <Highlight text={c.label} query={lastWord} />
+                </span>
               </span>
-              <Arrow className="h-4 w-4 shrink-0 text-ink-muted" />
+              <span className="shrink-0 text-xs text-ink-muted">{tr('قطع العربية دي', 'Parts for it')}</span>
             </div>
           ),
         })),

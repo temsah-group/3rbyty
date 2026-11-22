@@ -21,7 +21,7 @@ export interface ParsedListing {
 }
 
 /** Letters folded the way speech-to-text and people spell them differently. */
-const fold = (text: string) =>
+export const fold = (text: string) =>
   text
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/[ً-ْـ]/g, '')
@@ -31,7 +31,7 @@ const fold = (text: string) =>
     .replace(/ؤ/g, 'و')
     .replace(/ئ/g, 'ي')
     .toLowerCase();
-const key = (text: string) => fold(text).replace(/[^\p{L}\p{N}]/gu, '');
+export const key = (text: string) => fold(text).replace(/[^\p{L}\p{N}]/gu, '');
 
 // ---- Numbers said as words ("ألف وتمنمية" = 1800) ----
 
@@ -134,7 +134,7 @@ const MODEL_ALIASES: Record<string, string[]> = { sunny: ['صني', 'سني'], l
 type Phrase = { words: string[]; brand: CarBrand; model: CarBrand['models'][number] | null };
 
 /** Every way to say each make and model, as word lists of folded keys. */
-function phrasesOf(brands: CarBrand[]): { makes: Phrase[]; models: Phrase[] } {
+export function phrasesOf(brands: CarBrand[]): { makes: Phrase[]; models: Phrase[] } {
   const words = (name: string) => fold(name).split(/[\s\-]+/).map(key).filter(Boolean);
   const makes: Phrase[] = [];
   const models: Phrase[] = [];
@@ -154,7 +154,7 @@ function phrasesOf(brands: CarBrand[]): { makes: Phrase[]; models: Phrase[] } {
 }
 
 /** Whether [phrase] is said at [at], allowing "ل"/"ب"/"و" stuck to the first word ("لتويوتا"). */
-function saidAt(tokens: string[], at: number, phrase: string[]): boolean {
+export function saidAt(tokens: string[], at: number, phrase: string[]): boolean {
   if (phrase.length === 0 || at + phrase.length > tokens.length) return false;
   return phrase.every((word, i) => {
     const token = tokens[at + i]!;

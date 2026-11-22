@@ -91,7 +91,11 @@ export function normalizeSearchText(value: string): string {
     .trim();
 }
 
-/** Everything a part is found by, normalised: name, number, category, city and cars. */
+/**
+ * Everything a part is found by, normalised: name, number, category, city
+ * and cars. Not the seller's name: a shop called "سنتر موبيل" would otherwise
+ * come up, with all its parts, for "موبيل" (shops have their own search).
+ */
 export function searchableText(part: {
   name: string;
   partNumber?: string | null;
@@ -105,7 +109,6 @@ export function searchableText(part: {
     part.partNumber ?? '',
     ...categoryNames[part.category],
     part.city,
-    part.sellerName ?? '',
   ];
   for (const fitment of part.fitments) {
     const brand = findBrand(fitment.brandId);

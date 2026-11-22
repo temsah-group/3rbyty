@@ -32,6 +32,7 @@ async function main() {
   const container = createContainer(connection, env);
   await Promise.all(Object.values(container.models).map((model) => model.syncIndexes()));
   const seeded = await seedSampleData(container);
+  await container.parts.refreshSearchText();
   // The admins in .env too, beside the sample ones.
   await syncAdminAccounts(container.models.Admin, env.ADMIN_ACCOUNTS);
   logger.info('Sample data ready', {

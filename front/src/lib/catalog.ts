@@ -190,7 +190,7 @@ export function useLabels() {
       `${brand(c.brandId, c.brandName)} ${model(c.brandId, c.modelId, c.modelName)}`.trim(),
     [brand, model],
   );
-  const car = useCallback((c: GarageCar) => `${carName(c)} ${c.year}`, [carName]);
+  const car = useCallback((c: GarageCar) => (c.year ? `${carName(c)} ${c.year}` : carName(c)), [carName]);
   /** "تويوتا كورولا 2014–2020", "تويوتا كراون", or "تويوتا (كل الموديلات)" for a whole make. */
   const fitment = useCallback(
     (f: Fitment) => {
@@ -232,8 +232,9 @@ export const parseCarsParam = (value: string): GarageCar[] =>
       return {
         brandId: brand.startsWith('~') ? OTHER_BRAND : brand,
         brandName: brand.startsWith('~') ? brand.slice(1) : null,
-        modelId: model.startsWith('~') ? null : model,
+        modelId: model.startsWith('~') || !model ? null : model,
         modelName: model.startsWith('~') ? model.slice(1) : null,
-        year: Number(year),
+        // 0: any year (a searched model without one).
+        year: Number(year) || 0,
       };
     });

@@ -8,6 +8,7 @@ import { categoryIcon, conditionLook, PartGrid, PartGridSkeleton } from '@/compo
 import { SearchBox } from '@/components/search';
 import { Button, cx, Dialog, EmptyState, ErrorState, Input, Select } from '@/components/ui';
 import { carId, CATEGORIES, carsParam, CONDITIONS, GOVERNORATES, parseCarsParam, useLabels } from '@/lib/catalog';
+import { searchCarsParam } from '@/lib/search-parse';
 import { addCar, garage } from '@/lib/collections';
 import { useI18n } from '@/lib/i18n';
 import { LoadMore, usePaged } from '@/lib/paging';
@@ -300,6 +301,76 @@ function Filters({
   );
 }
 
+/**
+ * One tap filters on a phone, under the search: condition first, then the
+ * categories. Tapping the chosen one again clears it. (A computer has the
+ * full filters beside the results.)
+ */
+function QuickFilters({ params, set }: { params: URLSearchParams; set: (key: string, value: string | null) => void }) {
+  const { lang } = useI18n();
+  const chip = (on: boolean) =>
+    cx(
+      'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold ring-1 transition',
+      on ? 'bg-navy text-white ring-navy' : 'bg-white text-navy ring-line hover:ring-navy/40',
+    );
+  return (
+    <div className="no-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 lg:hidden">
+      {CONDITIONS.map((c) => {
+        const on = params.get('condition') === c.id;
+        return (
+          <button key={c.id} type="button" aria-pressed={on} onClick={() => set('condition', on ? null : c.id)} className={chip(on)}>
+            {on && <Check className="h-4 w-4" />}
+            {lang === 'ar' ? c.ar : c.en}
+          </button>
+        );
+      })}
+      <span aria-hidden className="my-1.5 w-px shrink-0 bg-line" />
+      {CATEGORIES.map((c) => {
+        const on = params.get('category') === c.id;
+        const Icon = categoryIcon[c.id];
+        return (
+          <button key={c.id} type="button" aria-pressed={on} onClick={() => set('category', on ? null : c.id)} className={chip(on)}>
+            <Icon className="h-4 w-4" />
+            {lang === 'ar' ? c.ar : c.en}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * When nothing is found, a search close to this one that may find something:
+ * fewer words, or without the car or condition filter.
+ */
+function NearbySearches({ params, update }: { params: URLSearchParams; update: (changes: Record<string, string | null>) => void }) {
+  const { tr } = useI18n();
+  const labels = useLabels();
+  const words = (params.get('q') ?? '').split(/\s+/).filter(Boolean);
+  const options: { key: string; label: string; changes: Record<string, string | null> }[] = [];
+  if (words.length > 1) {
+    const shorter = words.slice(0, -1).join(' ');
+    options.push({ key: 'shorter', label: tr(`دوّر على «${shorter}» بس`, `Search just "${shorter}"`), changes: { q: shorter } });
+  }
+  const cars = params.get('cars');
+  if (cars && words.length) {
+    const car = parseCarsParam(cars).map((c) => labels.car(c)).join('، ');
+    options.push({ key: 'cars', label: tr(`من غير ${car}`, `Without ${car}`), changes: { cars: null } });
+  }
+  if (params.get('condition') || params.get('origin')) {
+    options.push({ key: 'kind', label: tr('أي حالة', 'Any condition'), changes: { condition: null, origin: null } });
+  }
+  return (
+    <>
+      {options.map((option) => (
+        <Button key={option.key} variant="outline" onClick={() => update(option.changes)}>
+          {option.label}
+        </Button>
+      ))}
+    </>
+  );
+}
+
 /** The filters in use, above the results, each with its own ×. */
 function ActiveFilters({ params, update, clear }: { params: URLSearchParams; update: (changes: Record<string, string | null>) => void; clear: () => void }) {
   const { tr, lang } = useI18n();
@@ -358,7 +429,9 @@ export default function Search() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   useEffect(() => setQ(params.get('q') ?? ''), [params]);
 
-  const query: Record<string, string | undefined> = { q: params.get('q') ?? undefined, sort: params.get('sort') ?? 'NEWEST' };
+  // With words to find, the best matches first unless another order is chosen.
+  const sort = params.get('sort') ?? (params.get('q') ? 'RELEVANCE' : 'NEWEST');
+  const query: Record<string, string | undefined> = { q: params.get('q') ?? undefined, sort };
   for (const key of FILTER_KEYS) query[key] = params.get(key) ?? undefined;
 
   const list = usePaged<Part, SearchResult>(['parts', 'search'], '/parts', query);
@@ -395,11 +468,29 @@ export default function Search() {
   return (
     <div className="mx-auto max-w-page px-4 py-6">
       {/* A search here keeps the filters already chosen. */}
-      <SearchBox value={q} onValueChange={setQ} onSearch={(text) => set('q', text || null)} size="lg" />
+      <SearchBox
+        value={q}
+        onValueChange={setQ}
+        // The words to find replace the old ones; a car, condition or "original" typed becomes its filter, the rest stay.
+        onSearch={(read) =>
+          update({
+            q: read.q || null,
+            ...(read.cars.length ? { cars: searchCarsParam(read.cars)! } : {}),
+            ...(read.condition ? { condition: read.condition } : {}),
+            ...(read.origin ? { origin: read.origin } : {}),
+          })
+        }
+        size="lg"
+      />
+
+      <QuickFilters params={params} set={set} />
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-ink-soft" aria-live="polite">
-          {list.first?.total !== undefined && tr(`${list.first.total} قطعة`, `${list.first.total} parts`)}
+        <p className="min-w-0 truncate text-ink-soft" aria-live="polite">
+          {list.first?.total !== undefined &&
+            (params.get('q')
+              ? tr(`${list.first.total} نتيجة لـ «${params.get('q')}»`, `${list.first.total} results for "${params.get('q')}"`)
+              : tr(`${list.first.total} قطعة`, `${list.first.total} parts`))}
         </p>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="lg:hidden" onClick={() => setFiltersOpen(true)}>
@@ -407,7 +498,8 @@ export default function Search() {
             {tr('الفلاتر', 'Filters')}
             {active > 0 && <span className="rounded-full bg-orange px-1.5 text-xs text-white">{active}</span>}
           </Button>
-          <Select value={params.get('sort') ?? 'NEWEST'} onChange={(e) => set('sort', e.target.value)} className="h-9 w-auto text-sm" aria-label={tr('الترتيب', 'Sort')}>
+          <Select value={sort} onChange={(e) => set('sort', e.target.value)} className="h-9 w-auto text-sm" aria-label={tr('الترتيب', 'Sort')}>
+            {params.get('q') && <option value="RELEVANCE">{tr('الأنسب', 'Best match')}</option>}
             <option value="NEWEST">{tr('الأحدث', 'Newest')}</option>
             <option value="PRICE_LOW">{tr('الأرخص', 'Lowest price')}</option>
             <option value="PRICE_HIGH">{tr('الأغلى', 'Highest price')}</option>
@@ -447,6 +539,7 @@ export default function Search() {
               body={tr('جرّب كلمة تانية أو شيل شوية فلاتر.', 'Try other words or fewer filters.')}
               action={
                 <div className="flex flex-wrap justify-center gap-2">
+                  <NearbySearches params={params} update={update} />
                   <Link to={`/requests/new${params.get('q') ? `?q=${encodeURIComponent(params.get('q')!)}` : ''}`}>
                     <Button variant="accent" tabIndex={-1}>{tr('اطلبها والمحلات ترد عليك', 'Ask the shops for it')}</Button>
                   </Link>

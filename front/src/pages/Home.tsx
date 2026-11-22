@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { BadgeCheck, Car, Check, ChevronLeft, ChevronRight, History, MapPin, PhoneCall, Plus, Search, Settings2, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { BadgeCheck, Car, Check, ChevronLeft, ChevronRight, History, MapPin, PhoneCall, Plus, Search, Settings2, Sparkles, Star } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { BrandLogo, BrandSelect, CarPicker, GarageDialog, withOtherBrand, YearField, yearOk } from '@/components/cars';
-import { categoryIcon, conditionLook, PartGrid, PartGridSkeleton, PartRow } from '@/components/parts';
+import { categoryIcon, conditionLook, PartCard, PartGrid, PartGridSkeleton, PartRow } from '@/components/parts';
 import { Button, cx, ErrorState, Img, Input, Select } from '@/components/ui';
 import { get } from '@/lib/api';
 import { carId, carsParam, CATEGORIES, CONDITIONS, GOVERNORATES, OTHER_BRAND, useAppConfig, useCars, useLabels } from '@/lib/catalog';
@@ -388,16 +388,22 @@ function SellBanner() {
   );
 }
 
+/** The makes most cars in Egypt are, in that order; the others behind "all makes". */
+const POPULAR_MAKES = ['toyota', 'hyundai', 'kia', 'nissan', 'chevrolet', 'mitsubishi', 'renault', 'skoda', 'fiat', 'mg', 'chery', 'peugeot'];
+
 function Brands() {
-  const { tr, lang, pick } = useI18n();
+  const { tr, pick } = useI18n();
   const labels = useLabels();
+  const [all, setAll] = useState(false);
+  const popular = POPULAR_MAKES.flatMap((id) => labels.brands.find((brand) => brand.id === id) ?? []);
+  const shown = all ? [...popular, ...labels.brands.filter((brand) => !POPULAR_MAKES.includes(brand.id))] : popular;
   return (
     <Section title={tr('ماركات السيارات', 'Car makes')}>
-      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
-        {labels.brands.map((brand: CarBrand) => (
+      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
+        {shown.map((brand: CarBrand) => (
           <Link
             key={brand.id}
-            to={`/search?q=${encodeURIComponent(lang === 'ar' ? brand.nameAr : brand.nameEn)}`}
+            to={`/search?cars=${encodeURIComponent(`${brand.id}::`)}`}
             className="group flex flex-col items-center gap-3 rounded-2xl bg-white px-2 pb-3 pt-4 text-center ring-1 ring-line transition hover:-translate-y-0.5 hover:shadow-md hover:ring-orange/50"
           >
             <BrandLogo brand={brand} className="h-12 w-16 text-2xl transition duration-300 group-hover:scale-110" />
@@ -405,7 +411,81 @@ function Brands() {
           </Link>
         ))}
       </div>
+      {labels.brands.length > popular.length && (
+        <div className="mt-4 text-center">
+          <Button variant="outline" onClick={() => setAll((open) => !open)}>
+            {all ? tr('أقل', 'Show fewer') : tr(`كل الماركات (${labels.brands.length})`, `All makes (${labels.brands.length})`)}
+          </Button>
+        </div>
+      )}
     </Section>
+  );
+}
+
+/**
+ * "مميز": the first strip on the page, the paid spot (featured parts, those
+ * for the visitor's car first). It moves on by itself every few seconds,
+ * stops while touched, hovered or focused, and can be swiped like any row.
+ * Hidden while there is nothing featured.
+ */
+function FeaturedStrip({ parts, loading }: { parts?: Part[]; loading: boolean }) {
+  const { tr, lang } = useI18n();
+  const rowRef = useRef<HTMLDivElement>(null);
+  const paused = useRef(false);
+  const count = parts?.length ?? 0;
+
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row || count < 2 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const timer = window.setInterval(() => {
+      if (paused.current || document.hidden) return;
+      const card = row.firstElementChild as HTMLElement | null;
+      const step = (card?.offsetWidth ?? 180) + 12;
+      // Right to left in Arabic: scrolling "forward" is towards negative positions.
+      const forward = lang === 'ar' ? -1 : 1;
+      const atEnd = Math.abs(row.scrollLeft) + row.clientWidth >= row.scrollWidth - 8;
+      if (atEnd) row.scrollTo({ left: 0, behavior: 'smooth' });
+      else row.scrollBy({ left: forward * step, behavior: 'smooth' });
+    }, 3500);
+    return () => window.clearInterval(timer);
+  }, [count, lang]);
+
+  if (!loading && count === 0) return null;
+  const pause = (value: boolean) => () => {
+    paused.current = value;
+  };
+  return (
+    <section className="mt-8" aria-roledescription="carousel" aria-label={tr('قطع مميزة', 'Featured parts')}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-xl font-extrabold md:text-2xl">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange text-white">
+            <Star className="h-4 w-4 fill-current" />
+          </span>
+          {tr('مميز', 'Featured')}
+        </h2>
+        <span className="text-xs font-bold text-ink-muted">{tr('من محلات وبياعين على عربيتي', 'From shops and sellers on 3arabity')}</span>
+      </div>
+      {loading && !parts ? (
+        <PartGridSkeleton count={2} />
+      ) : (
+        <div
+          ref={rowRef}
+          onPointerEnter={pause(true)}
+          onPointerLeave={pause(false)}
+          onTouchStart={pause(true)}
+          onTouchEnd={() => window.setTimeout(pause(false), 4000)}
+          onFocus={pause(true)}
+          onBlur={pause(false)}
+          className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-4 pb-2 md:mx-0 md:px-0"
+        >
+          {parts!.map((part) => (
+            <div key={part.id} className="w-44 shrink-0 snap-start sm:w-52 md:w-56">
+              <PartCard part={part} />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -627,9 +707,12 @@ export default function Home() {
 
   return <>
     <Hero />
+    {/* Rides over the hero's bottom edge, so it comes right after it. */}
     <ConditionStrip />
 
     <div className="mx-auto max-w-page px-4 pb-8">
+      <FeaturedStrip parts={home.data?.featured} loading={home.isLoading} />
+
       <MyGarage />
 
       <Categories />
@@ -639,8 +722,6 @@ export default function Home() {
       <Offers />
 
       {home.isError && !home.data ? <div className="mt-8"><ErrorState error={home.error} onRetry={() => home.refetch()} /></div> : <>
-        {!carQuery && (home.isLoading || (home.data?.featured.length ?? 0) > 0) && <Section title={tr('قطع مميزة', 'Featured parts')} subtitle={tr('مختارة من البياعين والمحلات الموثّقة', 'Picked from verified sellers and shops')} link="/search">{home.data ? <PartGrid parts={home.data.featured} /> : <PartGridSkeleton count={4} />}</Section>}
-
         <HowItWorks />
 
         <Section title={tr('أحدث قطع الغيار', 'Latest parts')} link={carQuery ? `/search?cars=${encodeURIComponent(carQuery)}` : '/search'}>

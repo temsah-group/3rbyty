@@ -224,8 +224,11 @@ describe('finding parts', () => {
     // A 2016 Corolla takes the pads (2014–2020), not the 2008–2013 engine.
     expect((await list('?cars=toyota:corolla:2016')).items.map((p) => p.id)).toEqual([ids.pads]);
     expect((await list('?cars=toyota:corolla:2016,hyundai:elantra:2015')).items).toHaveLength(2);
-    const bad = await app.api.get('/api/v1/parts?cars=toyota').expect(400);
+    // A make alone is any Toyota; a car with no make, or a year that isn't one, is refused.
+    expect((await list('?cars=toyota')).items).toHaveLength(2);
+    const bad = await app.api.get('/api/v1/parts?cars=:corolla:2016').expect(400);
     expect(bad.body.code).toBe('VALIDATION_FAILED');
+    await app.api.get('/api/v1/parts?cars=toyota:corolla:abc').expect(400);
   });
 
   it('sorts, pages with a cursor, and sends facets on the first page', async () => {
@@ -421,13 +424,16 @@ describe('the home screen', () => {
     expect(all.fittingCount).toBe(0);
 
     // Narrowed to a car: the count ignores the condition, the lists do not.
+    // Featured is the paid spot everyone sees: the ones that fit first, then the other featured.
     const used = await home('?cars=toyota:corolla:2016&condition=USED');
-    expect(used.featured.map((p) => p.id)).toEqual([corollaUsed]);
+    expect(used.featured.map((p) => p.id)).toEqual([corollaUsed, corollaNew]);
     expect(used.latest.map((p) => p.id)).toEqual([corollaUsed]);
     const corollaCount = 2 + 7; // the new and used pads, and the seven others
     expect(used.fittingCount).toBe(corollaCount);
     const hyundai = await home('?cars=hyundai:elantra:2014');
     expect(hyundai.latest.map((p) => p.id)).toEqual([elantra]);
+    // No featured part fits it: the strip still shows the featured ones (never the sold one).
+    expect(hyundai.featured.map((p) => p.id)).toEqual([corollaUsed, corollaNew]);
     expect(hyundai.fittingCount).toBe(1);
 
     await app.api.get('/api/v1/parts/home?condition=SHINY').expect(400);

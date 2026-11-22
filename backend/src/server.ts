@@ -48,6 +48,11 @@ async function main() {
     }
   });
   const container = createContainer(connection, env);
+  // Parts' search text, rewritten if what it is made of changed (in the background: the site works meanwhile).
+  void container.parts
+    .refreshSearchText()
+    .then((changed) => changed && logger.info('Search text refreshed', { parts: changed }))
+    .catch((error: unknown) => logger.warn('Refreshing search text failed', { error: error instanceof Error ? error.message : String(error) }));
   // The daily notification email goes out once its hour (Cairo) has come.
   const digest = () =>
     container.notifications.digestIfDue().catch((error: unknown) => {

@@ -126,12 +126,13 @@ const cars = z.string().transform((value, ctx) => {
       const [brand = '', model = '', year] = item.split(':');
       const typedBrand = brand.startsWith('~');
       const typedModel = model.startsWith('~');
+      // A model and a year may be left out: "toyota::" is any Toyota, "toyota:corolla:" any Corolla.
       return {
         brandId: typedBrand ? 'other' : brand,
         brandKey: typedBrand ? carKey(brand.slice(1)) : null,
-        modelId: typedModel ? null : model,
+        modelId: typedModel || !model ? null : model,
         modelKey: typedModel ? carKey(model.slice(1)) : null,
-        year: Number(year),
+        year: year ? Number(year) : null,
       };
     });
   if (
@@ -140,8 +141,7 @@ const cars = z.string().transform((value, ctx) => {
       (car) =>
         !car.brandId ||
         (car.brandId === 'other' && !car.brandKey) ||
-        (!car.modelId && !car.modelKey) ||
-        !Number.isInteger(car.year),
+        (car.year !== null && !Number.isInteger(car.year)),
     )
   ) {
     ctx.addIssue({ code: 'custom', message: 'validation.query' });
@@ -164,7 +164,8 @@ export const listQuerySchema = z.object({
   minPrice: intParam.optional(),
   maxPrice: intParam.optional(),
   cars: cars.optional(),
-  sort: z.enum(['NEWEST', 'PRICE_LOW', 'PRICE_HIGH'], 'validation.query').default('NEWEST'),
+  // RELEVANCE: parts whose name has the words first (with a search; else as NEWEST).
+  sort: z.enum(['RELEVANCE', 'NEWEST', 'PRICE_LOW', 'PRICE_HIGH'], 'validation.query').default('NEWEST'),
   sellerId: z
     .string()
     .regex(/^[0-9a-f]{24}$/, 'validation.query')

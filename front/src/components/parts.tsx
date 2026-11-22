@@ -107,8 +107,9 @@ export function PartCard({ part }: { part: Part }) {
           </span>
         )}
         {part.oldPrice && part.oldPrice > part.price && !part.isSold && (
-          <span className="absolute start-2 top-2 rounded-md bg-orange px-2 py-0.5 text-xs font-bold text-white" dir="ltr">
-            -{Math.round((1 - part.price / part.oldPrice) * 100)}%
+          // The corner opposite the heart; only the number reads left to right ("-14%").
+          <span className="absolute start-2 top-2 rounded-md bg-orange px-2 py-0.5 text-xs font-bold text-white">
+            <bdi dir="ltr">-{Math.round((1 - part.price / part.oldPrice) * 100)}%</bdi>
           </span>
         )}
       </div>

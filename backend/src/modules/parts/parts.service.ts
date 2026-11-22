@@ -4,7 +4,8 @@ import { Types, type QueryFilter } from 'mongoose';
 import { AppError, badRequest, ErrorCode, forbidden } from '../../common/http/errors.js';
 import { decodeCursor, encodeCursor } from '../../common/http/paging.js';
 import { logger } from '../../common/logger.js';
-import { normalizeSearchText, searchableText } from '../catalog/catalog.js';
+import { normalizeSearchText, searchableText, type PartCondition } from '../catalog/catalog.js';
+import { leadingPattern, namePattern, phrasePattern, searchPattern } from '../catalog/search-synonyms.js';
 import type { PhotoStorage } from '../users/photo-storage.js';
 import type { UserModel } from '../users/user.model.js';
 import { VISIBLE, type Part, type PartDocument, type PartModel } from './part.model.js';
@@ -45,7 +46,7 @@ const SORTS = {
 } as const;
 
 /** How many parts each home list shows. */
-const HOME_FEATURED = 8;
+const HOME_FEATURED = 12;
 const HOME_LATEST = 6;
 
 const notFound = () => new AppError(404, ErrorCode.PART_NOT_FOUND, 'parts.notFound');
@@ -67,7 +68,11 @@ export class PartsService {
 
   async list(query: ListQuery, viewerId?: string): Promise<Page & { facets?: object }> {
     const filter = this.searchFilter(query);
-    const page = await this.page(filter, query.sort, query.cursor, query.limit, viewerId);
+    const words = searchWords(query.q).words;
+    const page =
+      query.sort === 'RELEVANCE' && words.length
+        ? await this.bestFirst(filter, words, query.cursor, query.limit, viewerId)
+        : await this.page(filter, query.sort === 'RELEVANCE' ? 'NEWEST' : query.sort, query.cursor, query.limit, viewerId);
     if (query.cursor) return page;
     const [total, facets] = await Promise.all([
       this.parts.countDocuments(filter).exec(),
@@ -95,7 +100,7 @@ export class PartsService {
     if (query.condition) filter.condition = query.condition;
     if (query.cars) Object.assign(filter, fitsAny(query.cars));
     const newest = { listedAt: -1, _id: -1 } as const;
-    const [featured, latest, fittingCount] = await Promise.all([
+    const [fitting, latest, fittingCount] = await Promise.all([
       this.parts
         .find({ ...filter, isFeatured: true })
         .sort(newest)
@@ -106,6 +111,17 @@ export class PartsService {
         ? this.parts.countDocuments({ ...forSale, ...fitsAny(query.cars) }).exec()
         : Promise.resolve(0),
     ]);
+    // Featured is the paid spot: everyone sees it. Those for the visitor's car
+    // come first, then the other featured parts, up to the strip's length.
+    const others =
+      query.cars && fitting.length < HOME_FEATURED
+        ? await this.parts
+            .find({ ...forSale, isFeatured: true, _id: { $nin: fitting.map((part) => part._id) } })
+            .sort(newest)
+            .limit(HOME_FEATURED - fitting.length)
+            .exec()
+        : [];
+    const featured = [...fitting, ...others];
     const presented = await this.present([...featured, ...latest], viewerId);
     return {
       featured: presented.slice(0, featured.length),
@@ -359,13 +375,70 @@ export class PartsService {
     await this.uploads.deleteMany({ path: { $in: paths } }).exec();
   }
 
+  /**
+   * Search results best match first: a part whose name has more of the words
+   * (and has them in that order) before one found by its car or category;
+   * then the newest. Paged by position, as the order isn't one stored field.
+   */
+  private async bestFirst(filter: QueryFilter<Part>, words: string[], cursor: string | undefined, limit: number, viewerId?: string): Promise<Page> {
+    const offset = cursor?.startsWith('r') ? Math.max(0, Number(cursor.slice(1)) || 0) : 0;
+    const inName = (pattern: string) => ({ $regexMatch: { input: '$name', regex: pattern, options: 'i' } });
+    const phrase = words.length > 1 ? phrasePattern(words) : null;
+    const found = await this.parts
+      .aggregate([
+        { $match: filter },
+        {
+          $addFields: {
+            _score: {
+              $add: [
+                ...words.map((word) => ({ $cond: [inName(namePattern(word)), 3, 0] })),
+                // The whole search, in order ("شورت بلوك"), in the name.
+                ...(phrase ? [{ $cond: [inName(phrase), 2, 0] }] : []),
+                // The first word first in the name ("مارش …" for "مارش").
+                { $cond: [inName(leadingPattern(words[0]!)), 1, 0] },
+              ],
+            },
+          },
+        },
+        { $sort: { _score: -1, listedAt: -1, _id: -1 } },
+        { $skip: offset },
+        { $limit: limit + 1 },
+      ])
+      .exec();
+    const items = found.slice(0, limit).map((doc) => this.parts.hydrate(doc));
+    return { items: await this.present(items, viewerId), nextCursor: found.length > limit ? `r${offset + limit}` : null };
+  }
+
+  /**
+   * Every part's search text written again, after what it is made of changed
+   * (the seller's name is no longer in it). Run at startup; only parts whose
+   * text differs are written. Returns how many were.
+   */
+  async refreshSearchText(): Promise<number> {
+    let changed = 0;
+    const batch: { updateOne: { filter: { _id: Types.ObjectId }; update: { $set: { searchText: string } } } }[] = [];
+    const flush = async () => {
+      if (batch.length) await this.parts.bulkWrite(batch.splice(0));
+    };
+    for await (const part of this.parts.find().select('+searchText name partNumber category city fitments').lean().cursor()) {
+      const text = searchableText({ name: part.name, partNumber: part.partNumber, category: part.category, city: part.city, fitments: part.fitments });
+      if (text === part.searchText) continue;
+      batch.push({ updateOne: { filter: { _id: part._id }, update: { $set: { searchText: text } } } });
+      changed++;
+      if (batch.length >= 200) await flush();
+    }
+    await flush();
+    return changed;
+  }
+
   private searchFilter(query: ListQuery): QueryFilter<Part> {
     const filter: QueryFilter<Part> = { ...VISIBLE, isSold: false };
-    const words = normalizeSearchText(query.q ?? '')
-      .split(/\s+/)
-      .filter(Boolean);
+    const { words, condition, isOriginal } = searchWords(query.q);
+    if (condition) filter.condition = condition;
+    if (isOriginal !== undefined) filter.isOriginal = isOriginal;
     if (words.length) {
-      filter.$and = words.map((word) => ({ searchText: { $regex: escapeRegex(word) } }));
+      // Each word, by any name for the same thing ("سلف" also finds "مارش").
+      filter.$and = words.map((word) => ({ searchText: { $regex: searchPattern(word) } }));
     }
     if (query.category) filter.category = query.category;
     if (query.condition) filter.condition = query.condition;
@@ -468,21 +541,61 @@ export class PartsService {
  * own name typed on a part.
  */
 function fitsAny(cars: CarQuery): QueryFilter<Part> {
-  const inYears = (year: number) => ({ $or: [{ fromYear: null }, { fromYear: { $lte: year }, toYear: { $gte: year } }] });
+  // Without a year (a search for "كورولا"), every year of the model.
+  const inYears = (year: number | null) =>
+    year === null ? {} : { $or: [{ fromYear: null }, { fromYear: { $lte: year }, toYear: { $gte: year } }] };
   return {
     $or: [
       { fitsAllCars: true },
       ...cars.flatMap((car) => {
         const brand = brandMatch(car);
+        // A make alone: anything listed for it, whatever the model.
+        if (!car.modelId && !car.modelKey) return [{ fitments: { $elemMatch: brand } }];
         const keys = car.modelId ? modelKeys(car.brandId, car.modelId) : car.modelKey ? [car.modelKey] : [];
+        const years = car.year === null ? {} : { fromYear: { $lte: car.year }, toYear: { $gte: car.year } };
         return [
           { fitments: { $elemMatch: { ...brand, modelId: null, modelKey: null } } },
-          ...(car.modelId
-            ? [{ fitments: { $elemMatch: { brandId: car.brandId, modelId: car.modelId, fromYear: { $lte: car.year }, toYear: { $gte: car.year } } } }]
-            : []),
+          ...(car.modelId ? [{ fitments: { $elemMatch: { brandId: car.brandId, modelId: car.modelId, ...years } } }] : []),
           ...(keys.length ? [{ fitments: { $elemMatch: { ...brand, modelKey: { $in: keys }, ...inYears(car.year) } } }] : []),
         ];
       }),
     ],
   };
+}
+
+/** A year typed in a search ("2016"): parts don't say years in their text, the car filter does. */
+const YEAR_WORD = /^(19[5-9]\d|20[0-4]\d)$/;
+const CONDITION_WORDS: Record<string, PartCondition> = {
+  جديد: 'NEW', جديده: 'NEW', زيرو: 'NEW', new: 'NEW',
+  مستعمل: 'USED', مستعمله: 'USED', used: 'USED',
+  استيراد: 'IMPORTED', مستورد: 'IMPORTED', مستورده: 'IMPORTED', imported: 'IMPORTED',
+};
+const ORIGIN_WORDS: Record<string, boolean> = {
+  اصلي: true, اصليه: true, original: true, وكاله: true, genuine: true, oem: true,
+  تجاري: false, تجاريه: false, كوبي: false, aftermarket: false,
+};
+
+/**
+ * A search's words to find, normalised. Condition and "original" said in it
+ * are filters, not words to find; a year can't be found in a part's text.
+ */
+function searchWords(q: string | undefined): { words: string[]; condition?: PartCondition; isOriginal?: boolean } {
+  let condition: PartCondition | undefined;
+  let isOriginal: boolean | undefined;
+  const words = normalizeSearchText(q ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((word) => {
+      if (YEAR_WORD.test(word)) return false;
+      if (word in CONDITION_WORDS) {
+        condition ??= CONDITION_WORDS[word];
+        return false;
+      }
+      if (word in ORIGIN_WORDS) {
+        isOriginal ??= ORIGIN_WORDS[word];
+        return false;
+      }
+      return true;
+    });
+  return { words, condition, isOriginal };
 }
