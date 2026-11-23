@@ -46,18 +46,6 @@ export type PartCategory = (typeof PART_CATEGORIES)[number];
 export const PART_CONDITIONS = ['NEW', 'USED', 'IMPORTED'] as const;
 export type PartCondition = (typeof PART_CONDITIONS)[number];
 
-/** Category names in both languages, so either finds the part. */
-const categoryNames: Record<PartCategory, [string, string]> = {
-  ENGINE: ['المحرك', 'Engine'],
-  BRAKES: ['الفرامل', 'Brakes'],
-  SUSPENSION: ['العفشة', 'Suspension'],
-  ELECTRICAL: ['الكهرباء', 'Electrical'],
-  BODY: ['الصاج والبودي', 'Body panels'],
-  LIGHTS: ['الفوانيس', 'Lights'],
-  FILTERS: ['الفلاتر والزيوت', 'Filters & oils'],
-  TYRES: ['الكاوتش', 'Tyres & rims'],
-};
-
 export function findBrand(id: string): CarBrand | undefined {
   return brands.find((brand) => brand.id === id);
 }
@@ -73,6 +61,44 @@ export function modelYears(model: CarModel, now = new Date()): [number, number] 
 
 export function isGovernorate(city: string): boolean {
   return cities.has(city);
+}
+
+/**
+ * The governorate a search's words name, normalised, with or without "ال"
+ * ("اسكندريه", "الاسكندريه", "كفر الشيخ"), keyed to its name as stored.
+ */
+const governorateWords: Map<string, string> = (() => {
+  const map = new Map<string, string>();
+  for (const city of cities) {
+    const n = normalizeSearchText(city);
+    // Also run together: "بور سعيد" and "بورسعيد".
+    for (const form of [n, n.replace(/\s+/g, '')]) {
+      map.set(form, city);
+      if (form.startsWith('ال')) map.set(form.slice(2), city);
+    }
+  }
+  return map;
+})();
+
+export function governorateOf(words: string): string | undefined {
+  return governorateWords.get(words);
+}
+
+/**
+ * A search word that names a whole category ("فرامل", "عفشه") also finds the
+ * parts listed in it, whatever their names. Only the broad words: "فلتر",
+ * "موتور" or "كاوتش" mean that very part, not everything near it.
+ */
+const CATEGORY_WORDS: Record<string, PartCategory> = {
+  فرامل: 'BRAKES', فرامله: 'BRAKES', الفرامل: 'BRAKES', brakes: 'BRAKES', brake: 'BRAKES',
+  عفشه: 'SUSPENSION', العفشه: 'SUSPENSION', suspension: 'SUSPENSION',
+  كهربا: 'ELECTRICAL', كهرباء: 'ELECTRICAL', الكهربا: 'ELECTRICAL', الكهرباء: 'ELECTRICAL', electrical: 'ELECTRICAL',
+  صاج: 'BODY', الصاج: 'BODY', بودي: 'BODY', البودي: 'BODY', body: 'BODY', سمكره: 'BODY',
+  اضاءه: 'LIGHTS', الاضاءه: 'LIGHTS', انوار: 'LIGHTS', الانوار: 'LIGHTS', lights: 'LIGHTS', lighting: 'LIGHTS',
+};
+
+export function categoryOfWord(word: string): PartCategory | undefined {
+  return CATEGORY_WORDS[word];
 }
 
 /**
@@ -92,10 +118,25 @@ export function normalizeSearchText(value: string): string {
 }
 
 /**
- * Everything a part is found by, normalised: name, number, category, city
- * and cars. Not the seller's name: a shop called "سنتر موبيل" would otherwise
- * come up, with all its parts, for "موبيل" (shops have their own search).
+ * Everything a part is found by, normalised: its name, number and cars.
+ * Not the category's name: oils are in "الفلاتر والزيوت", and "فلتر" would
+ * bring every oil (a broad category word in a search matches the category
+ * instead, see [categoryOfWord]). Not the governorate: "شمال" (left) would
+ * bring everything in شمال سيناء (a governorate in a search is a filter).
+ * Not the seller's name: a shop called "سنتر موبيل" would come up, with all
+ * its parts, for "موبيل" (shops have their own search).
  */
+/**
+ * Engine oil is often listed by brand and grade only ("Total 5000 4L",
+ * "Shell اصفر 5000"): in the oils category, a grade, litres or an oil brand
+ * in the name, and not coolant, it is found by "زيت" too.
+ */
+const OIL_SIGNS = /\d+\s*w\s*-?\d+|\d\s*l(?![a-z])|لتر|shell|total|mobil|castrol|valvoline|motul|petronas|شل|توتال|موبيل|كاسترول|فالفولين|موتول/i;
+const NOT_OIL = /مياه|مية|water|coolant|تبريد|فلتر|filter/i;
+function looksLikeOil(part: { name: string; category: PartCategory }): boolean {
+  return part.category === 'FILTERS' && OIL_SIGNS.test(part.name) && !NOT_OIL.test(part.name);
+}
+
 export function searchableText(part: {
   name: string;
   partNumber?: string | null;
@@ -104,12 +145,8 @@ export function searchableText(part: {
   sellerName?: string;
   fitments: { brandId: string; modelId?: string | null; brandName?: string | null; modelName?: string | null }[];
 }): string {
-  const words = [
-    part.name,
-    part.partNumber ?? '',
-    ...categoryNames[part.category],
-    part.city,
-  ];
+  const words = [part.name, part.partNumber ?? ''];
+  if (looksLikeOil(part)) words.push('زيت oil');
   for (const fitment of part.fitments) {
     const brand = findBrand(fitment.brandId);
     const model = fitment.modelId ? findModel(fitment.brandId, fitment.modelId) : undefined;

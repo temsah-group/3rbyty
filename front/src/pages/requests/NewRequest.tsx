@@ -31,7 +31,9 @@ export default function NewRequest() {
   const [category, setCategory] = useState<Category | null>((params.get('category') as Category | null) ?? null);
   const [car, setCar] = useState<GarageCar | null>(cars[0] ?? null);
   const [picking, setPicking] = useState(false);
+  // Empty: anywhere in Egypt, so every shop for the car hears of it.
   const [city, setCity] = useState('');
+  const [onePlace, setOnePlace] = useState(false);
   const [note, setNote] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
@@ -43,7 +45,7 @@ export default function NewRequest() {
     const found: Record<string, string> = {};
     if (partName.trim().length < 3) found.partName = tr('اكتب اسم القطعة (3 حروف على الأقل)', 'Write the part (3 letters or more)');
     if (!car) found.car = tr('اختار العربية', 'Choose the car');
-    if (!city) found.city = tr('اختار المحافظة', 'Choose the governorate');
+    if (onePlace && !city) found.city = tr('اختار المحافظة، أو خليها كل مصر', 'Choose the governorate, or keep all of Egypt');
     setErrors(found);
     if (Object.keys(found).length || !car) return;
     setSending(true);
@@ -52,7 +54,7 @@ export default function NewRequest() {
         partName: partName.trim(),
         category,
         car: { brandId: car.brandId, brandName: car.brandName ?? null, modelId: car.modelId, modelName: car.modelName ?? null, year: car.year },
-        city,
+        city: onePlace && city ? city : null,
         note: note.trim() || null,
       });
       queryClient.invalidateQueries({ queryKey: ['requests', 'mine'] });
@@ -70,7 +72,7 @@ export default function NewRequest() {
     <div className="mx-auto max-w-2xl px-4 py-6 md:py-10">
       <h1 className="text-2xl font-extrabold md:text-3xl">{tr('اطلب قطعة', 'Ask for a part')}</h1>
       <p className="mt-2 text-ink-soft">
-        {tr('قولنا القطعة اللي محتاجها، وهنبعتها للمحلات اللي بتشتغل على عربيتك في محافظتك، وهما يردوا عليك بأسعارهم.', "Tell us the part you need. We'll send it to the shops that work on your car in your governorate, and they answer with their prices.")}
+        {tr('قولنا القطعة اللي محتاجها، وهنبعتها للمحلات اللي بتشتغل على عربيتك، وهما يردوا عليك بأسعارهم.', "Tell us the part you need. We'll send it to the shops that work on your car, and they answer with their prices.")}
       </p>
       <form onSubmit={submit} className="mt-6 space-y-5 rounded-2xl bg-white p-5 ring-1 ring-line md:p-6" noValidate>
         <TextField label={tr('القطعة', 'The part')} placeholder={tr('مثلاً: طقم تيل فرامل أمامي', 'e.g. Front brake pads')} value={partName} onChange={(e) => setPartName(e.target.value)} error={errors.partName} maxLength={100} />
@@ -99,8 +101,26 @@ export default function NewRequest() {
             ))}
           </div>
         </Field>
-        <Field label={tr('المحافظة', 'Governorate')} error={errors.city}>
-          <PickSelect options={governorateOptions(labels.city)} value={city} onChange={setCity} placeholder={tr('اختار', 'Choose')} ariaLabel={tr('المحافظة', 'Governorate')} searchLabel={tr('دوّر بالمحافظة أو المدينة…', 'Find a governorate or city…')} invalid={Boolean(errors.city)} />
+        <Field
+          label={tr('نبعت لمحلات فين؟', 'Which shops should hear of it?')}
+          hint={onePlace ? tr('هيوصل للمحلات اللي في المحافظة دي أو بتوصّل لها بس.', 'Only shops in that governorate, or that deliver there.') : tr('هيوصل لكل المحلات في مصر اللي بتشتغل على عربيتك، فردود أكتر.', 'Every shop in Egypt that works on your car, so more answers.')}
+          error={errors.city}
+        >
+          <div className="flex flex-wrap gap-2">
+            {[
+              { one: false, label: tr('كل مصر', 'All of Egypt') },
+              { one: true, label: tr('محافظة معينة', 'One governorate') },
+            ].map((choice) => (
+              <button key={String(choice.one)} type="button" aria-pressed={onePlace === choice.one} onClick={() => setOnePlace(choice.one)} className={cx('rounded-xl px-3 py-2 text-sm font-bold ring-1', onePlace === choice.one ? 'bg-navy text-white ring-navy' : 'bg-white ring-line hover:ring-navy')}>
+                {choice.label}
+              </button>
+            ))}
+          </div>
+          {onePlace && (
+            <div className="mt-2">
+              <PickSelect options={governorateOptions(labels.city)} value={city} onChange={setCity} placeholder={tr('اختار', 'Choose')} ariaLabel={tr('المحافظة', 'Governorate')} searchLabel={tr('دوّر بالمحافظة أو المدينة…', 'Find a governorate or city…')} invalid={Boolean(errors.city)} />
+            </div>
+          )}
         </Field>
         <Field label={tr('تفاصيل زيادة (اختياري)', 'More details (optional)')} hint={`${note.length}/300`}>
           <Textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder={tr('رقم القطعة، أصلي ولا تجاري، محتاجها إمتى…', 'Part number, original or aftermarket, when you need it…')} />

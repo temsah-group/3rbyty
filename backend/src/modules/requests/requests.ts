@@ -45,7 +45,8 @@ const requestSchema = new Schema(
     partName: { type: String, required: true, trim: true, maxlength: 100 },
     category: { type: String, enum: [...PART_CATEGORIES, null], default: null },
     car: { type: carSchema, required: true },
-    city: { type: String, required: true },
+    /** Where the buyer wants it; null: anywhere, every shop in Egypt is told. */
+    city: { type: String, default: null },
     note: { type: String, default: null },
     /** Set when the buyer closes it (found the part); it also closes after [REQUEST_DAYS]. */
     closedAt: { type: Date, default: null },
@@ -113,7 +114,7 @@ export const requestInputSchema = z.strictObject({
       const { model: _model, ...ref } = car;
       return { ...ref, year: value.year ?? null };
     }),
-  city: z.string('validation.city').refine(isGovernorate, 'validation.city'),
+  city: z.string('validation.city').refine(isGovernorate, 'validation.city').nullish().transform((city) => city ?? null),
   note: optionalText(300),
 });
 export type RequestInput = z.infer<typeof requestInputSchema>;
@@ -138,7 +139,7 @@ function shopMatches(shop: ShopDoc, request: PartRequest): boolean {
   const categories = (shop.categories ?? []) as string[];
   const categoryOk = !request.category || categories.length === 0 || categories.includes(request.category);
   const delivery = shop.delivery;
-  const placeOk = shop.city === request.city || Boolean(delivery?.available && delivery.governorates?.includes(request.city));
+  const placeOk = !request.city || shop.city === request.city || Boolean(delivery?.available && delivery.governorates?.includes(request.city));
   return makeOk && categoryOk && placeOk;
 }
 
@@ -149,7 +150,7 @@ function matchingShops(request: PartRequest) {
     $and: [
       request.car.brandId === OTHER_BRAND ? {} : { $or: [{ brandIds: { $size: 0 } }, { brandIds: request.car.brandId }] },
       request.category ? { $or: [{ categories: { $size: 0 } }, { categories: request.category }] } : {},
-      { $or: [{ city: request.city }, { 'delivery.available': true, 'delivery.governorates': request.city }] },
+      request.city ? { $or: [{ city: request.city }, { 'delivery.available': true, 'delivery.governorates': request.city }] } : {},
     ],
   };
 }
@@ -167,7 +168,7 @@ function presentRequest(request: PartRequestDocument) {
       modelName: car.modelName ?? null,
       year: car.year ?? null,
     },
-    city: request.city,
+    city: request.city ?? null,
     note: request.note ?? null,
     open: isOpen(request),
     replyCount: request.replyCount ?? 0,
@@ -186,7 +187,7 @@ export class RequestsService {
     },
   ) {}
 
-  /** A new request, told to the shops that carry the make in that governorate. */
+  /** A new request, told to the shops that carry the make in that governorate, or anywhere when none is given. */
   async create(buyerId: string, input: RequestInput) {
     const buyer = new Types.ObjectId(buyerId);
     const open = await this.deps.requests.countDocuments({ buyerId: buyer, ...OPEN_NOW() }).exec();
@@ -281,7 +282,8 @@ export class RequestsService {
     const filter: Record<string, unknown> = {
       ...OPEN_NOW(),
       buyerId: { $ne: shop.ownerId },
-      city: { $in: places },
+      // Asked in a place it sells to, or anywhere.
+      city: { $in: [...places, null] },
       ...(brands.length ? { 'car.brandId': { $in: [...brands, OTHER_BRAND] } } : {}),
       ...(categories.length ? { category: { $in: [...categories, null] } } : {}),
     };

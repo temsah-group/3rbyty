@@ -241,7 +241,8 @@ export interface PartRequest {
   partName: string;
   category: Category | null;
   car: { brandId: string; brandName: string | null; modelId: string | null; modelName: string | null; year: number | null };
-  city: string;
+  /** null: asked of shops anywhere in Egypt. */
+  city: string | null;
   note: string | null;
   open: boolean;
   replyCount: number;

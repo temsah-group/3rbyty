@@ -4,7 +4,7 @@ import { Types, type QueryFilter } from 'mongoose';
 import { AppError, badRequest, ErrorCode, forbidden } from '../../common/http/errors.js';
 import { decodeCursor, encodeCursor } from '../../common/http/paging.js';
 import { logger } from '../../common/logger.js';
-import { normalizeSearchText, searchableText, type PartCondition } from '../catalog/catalog.js';
+import { categoryOfWord, governorateOf, normalizeSearchText, searchableText, type PartCondition } from '../catalog/catalog.js';
 import { leadingPattern, namePattern, phrasePattern, searchPattern } from '../catalog/search-synonyms.js';
 import type { PhotoStorage } from '../users/photo-storage.js';
 import type { UserModel } from '../users/user.model.js';
@@ -439,12 +439,18 @@ export class PartsService {
 
   private searchFilter(query: ListQuery): QueryFilter<Part> {
     const filter: QueryFilter<Part> = { ...VISIBLE, isSold: false };
-    const { words, condition, isOriginal } = searchWords(query.q);
+    const { words, condition, isOriginal, city } = searchWords(query.q);
     if (condition) filter.condition = condition;
     if (isOriginal !== undefined) filter.isOriginal = isOriginal;
+    if (city) filter.city = city;
     if (words.length) {
-      // Each word, by any name for the same thing ("سلف" also finds "مارش").
-      filter.$and = words.map((word) => ({ searchText: { $regex: searchPattern(word) } }));
+      // Each word, by any name for the same thing ("سلف" also finds "مارش");
+      // a whole category's name ("فرامل") also finds the parts listed in it.
+      filter.$and = words.map((word) => {
+        const byText = { searchText: { $regex: searchPattern(word) } };
+        const category = categoryOfWord(word);
+        return category ? { $or: [byText, { category }] } : byText;
+      });
     }
     if (query.category) filter.category = query.category;
     if (query.condition) filter.condition = query.condition;
@@ -582,15 +588,32 @@ const ORIGIN_WORDS: Record<string, boolean> = {
 };
 
 /**
- * A search's words to find, normalised. Condition and "original" said in it
- * are filters, not words to find; a year can't be found in a part's text.
+ * A search's words to find, normalised. Condition, "original" and a
+ * governorate said in it are filters, not words to find; a year can't be
+ * found in a part's text.
  */
-function searchWords(q: string | undefined): { words: string[]; condition?: PartCondition; isOriginal?: boolean } {
+function searchWords(q: string | undefined): { words: string[]; condition?: PartCondition; isOriginal?: boolean; city?: string } {
   let condition: PartCondition | undefined;
   let isOriginal: boolean | undefined;
-  const words = normalizeSearchText(q ?? '')
-    .split(/\s+/)
-    .filter(Boolean)
+  let city: string | undefined;
+  const all = normalizeSearchText(q ?? '').split(/\s+/).filter(Boolean);
+  // Governorates first, two words ("كفر الشيخ", "بور سعيد") before one.
+  const kept: string[] = [];
+  for (let i = 0; i < all.length; i++) {
+    const pair = i + 1 < all.length ? governorateOf(`${all[i]} ${all[i + 1]}`) ?? governorateOf(`${all[i]}${all[i + 1]}`) : undefined;
+    if (pair && !city) {
+      city = pair;
+      i++;
+      continue;
+    }
+    const one = governorateOf(all[i]!);
+    if (one && !city) {
+      city = one;
+      continue;
+    }
+    kept.push(all[i]!);
+  }
+  const words = kept
     .filter((word) => {
       if (YEAR_WORD.test(word)) return false;
       if (word in CONDITION_WORDS) {
@@ -603,5 +626,5 @@ function searchWords(q: string | undefined): { words: string[]; condition?: Part
       }
       return true;
     });
-  return { words, condition, isOriginal };
+  return { words, condition, isOriginal, city };
 }

@@ -52,6 +52,33 @@ describe('searching by any name for a part', () => {
     expect(await search('accent')).toEqual(['طقم تيل']);
   });
 
+  it("doesn't bring a part for its category's or governorate's name, but finds oil by its grade and a whole category by its name", async () => {
+    const seller = await signUp(app, 'seller@example.com');
+    await listPart(app, seller.token, { name: 'Total 5000 4L', category: 'FILTERS', fitments: [], fitsAllCars: true });
+    await listPart(app, seller.token, { name: 'فلتر زيت', category: 'FILTERS' });
+    await listPart(app, seller.token, { name: 'مياه موبيل 4L', category: 'FILTERS', fitments: [], fitsAllCars: true });
+    await listPart(app, seller.token, { name: 'تيل امامي', category: 'BRAKES' });
+    await listPart(app, seller.token, { name: 'طقم جنط', category: 'TYRES' });
+    await listPart(app, seller.token, { name: 'مارش', category: 'ELECTRICAL', city: 'الإسكندرية' });
+    await listPart(app, seller.token, { name: 'فانوس شمال', category: 'LIGHTS', city: 'القاهرة' });
+    await listPart(app, seller.token, { name: 'جلبة مقص', category: 'SUSPENSION', city: 'شمال سيناء' });
+
+    // Oils are in "الفلاتر والزيوت": a filter search is filters, an oil search oils.
+    expect(await search('فلتر')).toEqual(['فلتر زيت']);
+    expect(await search('زيت')).toEqual(['Total 5000 4L', 'فلتر زيت']);
+    expect(await search('زيت توتال')).toEqual(['Total 5000 4L']);
+    // Tyres are not rims; a brand of parts is not a bush.
+    expect(await search('كاوتش')).toEqual([]);
+    expect(await search('بوش')).toEqual([]);
+    // A whole category by name: brake pads for "فرامل".
+    expect(await search('فرامل')).toEqual(['تيل امامي']);
+    // "شمال" is the left side, not شمال سيناء; a governorate in a search is where.
+    expect(await search('شمال')).toEqual(['فانوس شمال']);
+    expect(await search('مارش اسكندريه')).toEqual(['مارش']);
+    expect(await search('مارش القاهرة')).toEqual([]);
+    expect(await search('الاسكندرية')).toEqual(['مارش']);
+  });
+
   it('reads a year, condition or "original" in the search as filters, and takes a make or a model without a year', async () => {
     const seller = await signUp(app, 'seller@example.com');
     await listPart(app, seller.token, { name: 'مارش', category: 'ELECTRICAL', condition: 'USED' }); // Corolla 2014–2020

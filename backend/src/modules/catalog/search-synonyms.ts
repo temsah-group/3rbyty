@@ -1,106 +1,10 @@
 import { normalizeSearchText } from './catalog.js';
-
-/**
- * The names people use for the same thing: Egyptian, standard Arabic,
- * English and Franco, and the usual misspellings. A search for any of them
- * finds parts listed under the others ("سلف" finds a "مارش"). Words only,
- * each group meaning exactly the same; checked after normalising (أ→ا, ة→ه).
- */
-const GROUPS: string[][] = [
-  // Electrical
-  ['مارش', 'سلف', 'ستارتر', 'استارتر', 'starter', 'مارشات'],
-  ['دينامو', 'دينمو', 'الترنيتر', 'التيرناتور', 'alternator', 'دينامات'],
-  ['بطاريه', 'بطاريات', 'باتري', 'battery'],
-  ['حساس', 'حساسات', 'سنسور', 'سنسر', 'sensor', 'sensors'],
-  ['كويل', 'بوبينه', 'بوبينة', 'coil', 'كويلات'],
-  ['بوجيه', 'بوجيهات', 'بوجي', 'شمعه', 'spark', 'plug', 'plugs'],
-  ['كمبيوتر', 'ecu', 'ecm'],
-  ['لمبه', 'لمبات', 'لمبة', 'bulb', 'bulbs'],
-  ['كلاكس', 'بوري', 'زماره', 'horn'],
-  ['ضفيره', 'ضفيرة', 'ضفاير', 'wiring', 'harness'],
-  // Engine and cooling
-  ['موتور', 'مكنه', 'ماكينه', 'محرك', 'engine', 'motor'],
-  ['جوان', 'جوانات', 'gasket', 'gaskets'],
-  ['بستم', 'بساتم', 'بيستون', 'piston', 'pistons'],
-  ['تيربو', 'تربو', 'turbo'],
-  ['كاتينه', 'كاتينة', 'جنزير', 'سلسله', 'chain'],
-  ['سير', 'سيور', 'belt', 'belts'],
-  ['ردياتير', 'رداتير', 'راديتر', 'رادياتير', 'ريداتير', 'radiator'],
-  ['مروحه', 'مراوح', 'fan', 'fans'],
-  ['طلمبه', 'طلمبات', 'مضخه', 'طرمبه', 'pump'],
-  ['ترموستات', 'ثرموستات', 'ثيرموستات', 'thermostat'],
-  ['كمبروسر', 'كومبروسر', 'كباس', 'compressor'],
-  ['تكييف', 'مكيف', 'تكيف', 'ac'],
-  ['شكمان', 'عادم', 'exhaust', 'muffler'],
-  ['بخاخ', 'بخاخات', 'انجكتور', 'رشاش', 'injector', 'injectors'],
-  ['دبرياج', 'كلتش', 'كلاتش', 'clutch'],
-  ['فتيس', 'جيربوكس', 'جير', 'gearbox', 'transmission'],
-  ['مياه', 'ميه', 'مايه', 'water'],
-  ['بنزين', 'وقود', 'fuel'],
-  ['زيت', 'زيوت', 'oil'],
-  ['فلتر', 'فلاتر', 'filter', 'filters'],
-  ['هوا', 'هواء', 'air'],
-  // Brakes
-  ['تيل', 'فحمات', 'فحمه', 'pads', 'pad'],
-  ['طنبوره', 'طنابير', 'ديسك', 'اسطوانه', 'disc', 'disk', 'rotor'],
-  ['فرامل', 'فرامله', 'brake', 'brakes'],
-  ['كاليبر', 'كليبر', 'caliper'],
-  // Suspension and steering
-  ['مساعد', 'مساعدين', 'مساعدات', 'امتصاص', 'shock', 'shocks', 'absorber'],
-  ['مقص', 'مقصات', 'arm', 'arms'],
-  ['جلبه', 'جلب', 'جلبة', 'بوش', 'bush', 'bushing'],
-  ['بلي', 'بليه', 'رولمان', 'bearing', 'bearings'],
-  ['دريكسيون', 'دركسيون', 'دريكسون', 'steering'],
-  ['مقود', 'طاره', 'دركسيون'],
-  // Body and glass
-  ['اكصدام', 'اكسدام', 'صدام', 'اكصدامات', 'bumper'],
-  ['كبوت', 'كابوت', 'كبود', 'hood', 'bonnet'],
-  ['رفرف', 'رفارف', 'fender'],
-  ['باب', 'ابواب', 'door', 'doors'],
-  ['شبكه', 'جريل', 'grill', 'grille'],
-  ['مرايه', 'مراية', 'مرايات', 'مرآه', 'mirror', 'mirrors'],
-  ['زجاج', 'ازاز', 'قزاز', 'glass', 'windshield'],
-  ['مساحات', 'مساحه', 'مساحة', 'wiper', 'wipers'],
-  ['شنطه', 'شنطة', 'trunk', 'boot'],
-  // Lights
-  ['فانوس', 'فوانيس', 'headlight', 'headlights', 'lamp'],
-  ['اسطب', 'استوب', 'stop', 'taillight'],
-  ['كشاف', 'كشافات', 'ضباب', 'fog'],
-  // Tyres and wheels
-  // Not "كفر": it is also كفر الشيخ, كفر الدوار…
-  ['كاوتش', 'كاوتشات', 'اطار', 'اطارات', 'tire', 'tires', 'tyre', 'tyres'],
-  ['جنط', 'جنوط', 'rim', 'rims', 'wheel', 'wheels'],
-  // Sides and places, as people say them
-  ['امامي', 'قدامي', 'front'],
-  ['خلفي', 'ورا', 'وراني', 'rear', 'back'],
-  ['يمين', 'right'],
-  ['شمال', 'يسار', 'left'],
-  // Condition and kind
-  ['جديد', 'زيرو', 'new'],
-  ['مستعمل', 'used'],
-  ['اصلي', 'اوريجينال', 'وكاله', 'original', 'genuine', 'oem'],
-  ['تجاري', 'كوبي', 'aftermarket'],
-  ['استيراد', 'مستورد', 'imported'],
-  // Makes, as they are often spelled
-  ['شيفروليه', 'شفروليه', 'شيفروليت', 'شفروليت', 'شيفرولية', 'chevrolet', 'chevy'],
-  ['هيونداي', 'هيونداى', 'هيوندا', 'هونداي', 'hyundai'],
-  ['مرسيدس', 'مارسيدس', 'بنز', 'mercedes', 'benz'],
-  ['فولكس', 'فلوكس', 'فولكسفاجن', 'vw', 'volkswagen'],
-  ['تويوتا', 'تيوتا', 'toyota'],
-  ['متسوبيشي', 'ميتسوبيشي', 'mitsubishi'],
-  ['بيجو', 'بيچو', 'peugeot'],
-  // Oil brands, written in English on the bottle and said in Arabic.
-  ['شل', 'شيل', 'shell'],
-  ['موبيل', 'موبل', 'mobil'],
-  ['توتال', 'total'],
-  ['كاسترول', 'كاسترل', 'castrol'],
-  ['فالفولين', 'valvoline'],
-];
+import { SEARCH_TERMS } from './search-terms.js';
 
 /** Each normalised word to every word of its groups (a word may be in more than one). */
 const SAME: Map<string, Set<string>> = (() => {
   const map = new Map<string, Set<string>>();
-  for (const group of GROUPS) {
+  for (const group of SEARCH_TERMS) {
     const words = group.map((word) => normalizeSearchText(word));
     for (const word of words) {
       const known = map.get(word) ?? new Set<string>();

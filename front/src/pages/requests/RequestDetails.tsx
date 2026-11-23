@@ -53,7 +53,7 @@ export default function RequestDetails() {
         </div>
         <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-soft">
           <span className="flex items-center gap-1"><Car className="h-4 w-4" />{car(r)}</span>
-          <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{labels.city(r.city)}</span>
+          <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{r.city ? labels.city(r.city) : tr('كل مصر', 'All of Egypt')}</span>
           <span className="flex items-center gap-1"><Clock className="h-4 w-4" />{relativeDay(r.createdAt, lang)}</span>
           {r.category && <span className="rounded-md bg-canvas px-2 text-xs font-bold">{labels.category(r.category)}</span>}
         </p>

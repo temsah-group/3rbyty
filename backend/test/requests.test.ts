@@ -83,6 +83,25 @@ describe('asking shops for a part', () => {
     expect(late.body.code).toBe('REQUEST_CLOSED');
   });
 
+  it('tells shops in every governorate when the buyer names none', async () => {
+    const giza = await openShop('giza@example.com');
+    const alex = await openShop('alex@example.com', { city: 'الإسكندرية', delivery: { available: false, governorates: [] } });
+    const otherMake = await openShop('hyundai@example.com', { city: 'الإسكندرية', brandIds: ['hyundai'] });
+    const buyer = await signUp(app, 'buyer@example.com', 'مشتري');
+
+    const created = await ask(buyer.token, { city: null }).expect(201);
+    const id = created.body.data.id as string;
+    expect(created.body.data.city).toBeNull();
+    expect((await ask(buyer.token, { city: undefined }).expect(201)).body.data.city).toBeNull();
+
+    // Any place, still only the shops for the make.
+    expect((await notificationsOf(giza.token)).some((n) => n.requestId === id)).toBe(true);
+    expect((await notificationsOf(alex.token)).some((n) => n.requestId === id)).toBe(true);
+    expect((await notificationsOf(otherMake.token)).some((n) => n.requestId === id)).toBe(false);
+    expect((await inboxOf(alex.token)).map((r) => r.id)).toContain(id);
+    await app.api.post(`/api/v1/requests/${id}/replies`).set(auth(alex.token)).send({ price: 900, condition: 'USED' }).expect(200);
+  });
+
   it('takes a car typed by hand, and checks what it is given', async () => {
     const shop = await openShop('any@example.com', { brandIds: [] });
     const buyer = await signUp(app, 'buyer@example.com');
