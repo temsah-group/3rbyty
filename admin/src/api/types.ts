@@ -53,7 +53,7 @@ export type PartRow = {
   category: string
   condition: string
   isOriginal: boolean
-  price: number
+  price: number | null
   oldPrice: number | null
   partNumber: string | null
   images: string[]
@@ -193,7 +193,7 @@ export type Stats = {
   topParts: {
     id: string
     name: string
-    price: number
+    price: number | null
     city: string
     images: string[]
     views: number

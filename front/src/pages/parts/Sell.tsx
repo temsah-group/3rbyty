@@ -63,7 +63,7 @@ const fromPart = (p: Part): Draft => ({
   fitments: p.fitments,
   fitsAllCars: p.fitsAllCars ?? false,
   images: p.images,
-  price: String(p.price),
+  price: p.price == null ? '' : String(p.price),
   oldPrice: p.oldPrice ? String(p.oldPrice) : '',
   city: p.city,
   phone: fromE164(p.seller.phone),
@@ -430,9 +430,11 @@ export default function Sell() {
     if (s === 1 && !draft.fitsAllCars && !draft.fitments.length) e.fitments = tr('اختار ماركة واحدة على الأقل، أو "كل العربيات"', 'Choose at least one make, or "every car"');
     if (s === 2 && !draft.images.length) e.images = tr('ضيف صورة واحدة على الأقل', 'Add at least one photo');
     if (s === 3) {
+      // No price is fine: buyers call for it.
       const price = Number(draft.price);
-      if (!Number.isInteger(price) || price < 1 || price > 10_000_000) e.price = tr('اكتب سعر صحيح بالجنيه', 'Enter a valid price in pounds');
-      if (draft.oldPrice && !(Number(draft.oldPrice) > price)) e.oldPrice = tr('السعر القديم لازم يكون أكبر من الجديد', 'The old price must be higher');
+      if (draft.price.trim() && (!Number.isInteger(price) || price < 1 || price > 10_000_000)) e.price = tr('اكتب سعر صحيح بالجنيه', 'Enter a valid price in pounds');
+      if (draft.oldPrice && !draft.price.trim()) e.oldPrice = tr('اكتب السعر الجديد الأول', 'Enter the new price first');
+      else if (draft.oldPrice && !(Number(draft.oldPrice) > price)) e.oldPrice = tr('السعر القديم لازم يكون أكبر من الجديد', 'The old price must be higher');
       if (!draft.city) e.city = tr('اختار المحافظة', 'Choose a governorate');
       if (!toE164(draft.phone)) e.phone = tr('اكتب رقم موبايل مصري صحيح', 'Enter an Egyptian mobile number');
     }
@@ -478,7 +480,7 @@ export default function Sell() {
       category: draft.category as Category,
       condition: draft.condition as Condition,
       isOriginal: draft.isOriginal,
-      price: Number(draft.price),
+      price: draft.price.trim() ? Number(draft.price) : null,
       oldPrice: draft.oldPrice ? Number(draft.oldPrice) : null,
       partNumber: draft.partNumber.trim() || null,
       description: draft.description.trim() || null,
@@ -693,7 +695,7 @@ export default function Sell() {
           <div className={cx('space-y-5', quick && 'rounded-2xl bg-white p-5 ring-1 ring-line md:p-6')}>
             {heading(3)}
             <div className="grid gap-4 sm:grid-cols-2">
-              <TextField label={tr('السعر بالجنيه', 'Price (EGP)')} type="number" inputMode="numeric" min={1} value={draft.price} onChange={(e) => set('price', e.target.value)} error={errors.price} />
+              <TextField label={tr('السعر بالجنيه (اختياري)', 'Price in EGP (optional)')} type="number" inputMode="numeric" min={1} value={draft.price} onChange={(e) => set('price', e.target.value)} error={errors.price} />
               <TextField label={tr('السعر قبل الخصم (اختياري)', 'Price before discount (optional)')} type="number" inputMode="numeric" min={1} value={draft.oldPrice} onChange={(e) => set('oldPrice', e.target.value)} error={errors.oldPrice} />
             </div>
             {quick && !editContact ? (
@@ -726,7 +728,7 @@ export default function Sell() {
                 <p className="text-sm text-ink-soft">
                   {draft.category && labels.category(draft.category)} · {draft.condition && labels.condition(draft.condition)} · {draft.isOriginal ? tr('أصلي', 'Original') : tr('تجاري', 'Aftermarket')}
                 </p>
-                <p className="mt-1 text-xl font-extrabold">{draft.price && formatPrice(Number(draft.price), lang)}</p>
+                <p className="mt-1 text-xl font-extrabold">{formatPrice(draft.price.trim() ? Number(draft.price) : null, lang)}</p>
               </div>
             </div>
             <dl className="divide-y divide-line text-sm">

@@ -73,7 +73,8 @@ export interface Part {
   category: Category;
   condition: Condition;
   isOriginal: boolean;
-  price: number;
+  /** null: the buyer asks the seller. */
+  price: number | null;
   oldPrice: number | null;
   partNumber: string | null;
   description: string | null;
@@ -98,7 +99,8 @@ export interface PartInput {
   category: Category;
   condition: Condition;
   isOriginal: boolean;
-  price: number;
+  /** null: the buyer asks the seller. */
+  price: number | null;
   oldPrice: number | null;
   partNumber: string | null;
   description: string | null;
@@ -219,7 +221,7 @@ export interface AppNotification {
 /** A shop's answer to a part request, as its buyer sees it. */
 export interface RequestReply {
   id: string;
-  price: number;
+  price: number | null;
   condition: Condition;
   isOriginal: boolean;
   note: string | null;
@@ -229,7 +231,7 @@ export interface RequestReply {
 
 /** A shop's own answer, as the shop sees it. */
 export interface MyReply {
-  price: number;
+  price: number | null;
   condition: Condition;
   isOriginal: boolean;
   note: string | null;

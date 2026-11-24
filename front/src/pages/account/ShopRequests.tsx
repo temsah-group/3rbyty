@@ -48,7 +48,7 @@ export default function ShopRequests() {
                   {request.myReply ? (
                     <span className="flex items-center gap-1.5 text-sm font-bold text-emerald-700">
                       <CheckCircle2 className="h-4 w-4" />
-                      {tr(`رديت بـ ${formatPrice(request.myReply.price, lang)}`, `Answered: ${formatPrice(request.myReply.price, lang)}`)}
+                      {request.myReply.price == null ? tr('رديت', 'Answered') : tr(`رديت بـ ${formatPrice(request.myReply.price, lang)}`, `Answered: ${formatPrice(request.myReply.price, lang)}`)}
                     </span>
                   ) : (
                     <span className="text-sm text-ink-soft">{tr('لسه ما ردتش', 'Not answered yet')}</span>

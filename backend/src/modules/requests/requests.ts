@@ -64,7 +64,8 @@ const replySchema = new Schema(
     requestId: { type: Schema.Types.ObjectId, ref: 'PartRequest', required: true },
     shopId: { type: Schema.Types.ObjectId, ref: 'Shop', required: true },
     sellerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    price: { type: Number, required: true },
+    /** null: "I have it", the price on the phone. */
+    price: { type: Number, default: null },
     condition: { type: String, enum: PART_CONDITIONS, required: true },
     isOriginal: { type: Boolean, default: false },
     note: { type: String, default: null },
@@ -120,7 +121,7 @@ export const requestInputSchema = z.strictObject({
 export type RequestInput = z.infer<typeof requestInputSchema>;
 
 export const replyInputSchema = z.strictObject({
-  price: z.number('validation.price').int('validation.price').min(1, 'validation.price').max(10_000_000, 'validation.price'),
+  price: z.number('validation.price').int('validation.price').min(1, 'validation.price').max(10_000_000, 'validation.price').nullish().transform((price) => price ?? null),
   condition: z.enum(PART_CONDITIONS, 'validation.condition'),
   isOriginal: z.boolean().default(false),
   note: optionalText(300),
@@ -227,7 +228,8 @@ export class RequestsService {
   async byId(userId: string, id: string) {
     const request = await this.find(id);
     if (request.buyerId.toString() === userId) {
-      const replies = await this.deps.replies.find({ requestId: request._id }).sort({ price: 1, createdAt: 1 }).lean().exec();
+      // Cheapest first; the answers without a price after them.
+      const replies = (await this.deps.replies.find({ requestId: request._id }).sort({ price: 1, createdAt: 1 }).lean().exec()).sort((a, b) => Number(a.price == null) - Number(b.price == null));
       const shops = await this.deps.shops.find({ _id: { $in: replies.map((r) => r.shopId) }, ...OPEN_SHOP }).lean().exec();
       const byId = new Map(shops.map((shop) => [shop._id.toString(), shop]));
       return {
@@ -239,7 +241,7 @@ export class RequestsService {
             const shop = byId.get(reply.shopId.toString())!;
             return {
               id: reply._id.toString(),
-              price: reply.price,
+              price: reply.price ?? null,
               condition: reply.condition,
               isOriginal: reply.isOriginal,
               note: reply.note ?? null,
@@ -261,7 +263,7 @@ export class RequestsService {
     const shop = await this.openShopOf(userId);
     if (!shop || !shopMatches(shop, request)) throw notFound('requests.notFound');
     const reply = await this.deps.replies.findOne({ requestId: request._id, shopId: shop._id }).lean().exec();
-    return { ...presentRequest(request), mine: false, myReply: reply ? { price: reply.price, condition: reply.condition, isOriginal: reply.isOriginal, note: reply.note ?? null } : null };
+    return { ...presentRequest(request), mine: false, myReply: reply ? { price: reply.price ?? null, condition: reply.condition, isOriginal: reply.isOriginal, note: reply.note ?? null } : null };
   }
 
   async close(buyerId: string, id: string) {
@@ -297,7 +299,7 @@ export class RequestsService {
     return {
       items: list.map((request) => {
         const reply = answered.get(request.id as string);
-        return { ...presentRequest(request), myReply: reply ? { price: reply.price, condition: reply.condition, isOriginal: reply.isOriginal, note: reply.note ?? null } : null };
+        return { ...presentRequest(request), myReply: reply ? { price: reply.price ?? null, condition: reply.condition, isOriginal: reply.isOriginal, note: reply.note ?? null } : null };
       }),
     };
   }
@@ -318,7 +320,7 @@ export class RequestsService {
       .exec();
     if (!before) {
       await this.deps.requests.updateOne({ _id: request._id }, { $inc: { replyCount: 1 } }).exec();
-      await this.deps.notifications.requestNotice([request.buyerId], 'REPLY', request._id, [shop.name, String(input.price), request.partName]);
+      await this.deps.notifications.requestNotice([request.buyerId], 'REPLY', request._id, [shop.name, input.price == null ? '' : String(input.price), request.partName]);
     }
     return { price: input.price, condition: input.condition, isOriginal: input.isOriginal, note: input.note };
   }

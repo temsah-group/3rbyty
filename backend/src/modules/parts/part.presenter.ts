@@ -26,7 +26,7 @@ export function presentPart(
     category: part.category,
     condition: part.condition,
     isOriginal: part.isOriginal,
-    price: part.price,
+    price: part.price ?? null,
     oldPrice: part.oldPrice ?? null,
     partNumber: part.partNumber ?? null,
     description: part.description ?? null,

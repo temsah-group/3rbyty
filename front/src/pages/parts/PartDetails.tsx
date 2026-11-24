@@ -69,7 +69,7 @@ export default function PartDetails() {
   usePageMeta(
     shown?.name,
     shown &&
-      [`${labels.condition(shown.condition)} · ${shown.price.toLocaleString('en')} ${tr('جنيه', 'EGP')} · ${labels.city(shown.city)}`, shown.description]
+      [`${labels.condition(shown.condition)} · ${shown.price == null ? '' : `${shown.price.toLocaleString('en')} ${tr('جنيه', 'EGP')} · `}${labels.city(shown.city)}`, shown.description]
         .filter(Boolean)
         .join('. '),
     { image: shown?.images[0] },
@@ -92,8 +92,7 @@ export default function PartDetails() {
       offers: {
         '@type': 'Offer',
         url: `${SITE_URL}/parts/${shown.id}`,
-        price: shown.price,
-        priceCurrency: 'EGP',
+        ...(shown.price == null ? {} : { price: shown.price, priceCurrency: 'EGP' }),
         availability: shown.isSold ? 'https://schema.org/SoldOut' : 'https://schema.org/InStock',
         itemCondition: shown.condition === 'USED' ? 'https://schema.org/UsedCondition' : 'https://schema.org/NewCondition',
         areaServed: { '@type': 'Country', name: 'Egypt' },
@@ -157,10 +156,12 @@ export default function PartDetails() {
                 <Stars value={p.rating.avg} /> {p.rating.avg.toFixed(1)} ({p.rating.count})
               </p>
             )}
+            {p.price != null && (
             <div className="mt-3 flex items-baseline gap-3">
               <span className="text-3xl font-extrabold">{formatPrice(p.price, lang)}</span>
               {p.oldPrice && <s className="text-ink-muted">{formatPrice(p.oldPrice, lang)}</s>}
             </div>
+            )}
             <p className="mt-1 text-sm text-ink-soft">
               {labels.city(p.city)} · {relativeDay(p.listedAt, lang)}
             </p>

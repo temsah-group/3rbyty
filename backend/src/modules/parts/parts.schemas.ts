@@ -75,7 +75,9 @@ const fields = {
     .number('validation.price')
     .int('validation.price')
     .min(1, 'validation.price')
-    .max(10_000_000, 'validation.price'),
+    .max(10_000_000, 'validation.price')
+    .nullish()
+    .transform((price) => price ?? null),
   oldPrice: z
     .number('validation.price')
     .int('validation.price')
@@ -90,8 +92,9 @@ const fields = {
   phone,
 };
 
-const oldPriceAbovePrice = (value: { price?: number; oldPrice?: number | null }) =>
-  value.oldPrice == null || value.price === undefined || value.oldPrice > value.price;
+// A discount needs a price: no price, no "price before".
+const oldPriceAbovePrice = (value: { price?: number | null; oldPrice?: number | null }) =>
+  value.oldPrice == null || value.price === undefined || (value.price !== null && value.oldPrice > value.price);
 
 export const createPartSchema = z
   .strictObject({ ...fields, fitments: fields.fitments.default([]), fitsAllCars: fields.fitsAllCars.default(false) })

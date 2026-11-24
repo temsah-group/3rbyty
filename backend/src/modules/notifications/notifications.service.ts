@@ -385,14 +385,14 @@ export class NotificationsService {
     await this.send(
       users.map((user) => user._id),
       'FITS_YOUR_CAR',
-      [part.name, money(part.price), part.city],
+      [part.name, part.price == null ? '' : money(part.price), part.city],
       part._id,
     );
   }
 
   /** A part got cheaper: whoever saved it hears of it. */
   async priceDropped(part: PartDocument, from: number): Promise<void> {
-    if (part.isSold || part.price >= from) return;
+    if (part.isSold || part.price == null || part.price >= from) return;
     const saved = await this.saved.find({ partId: part._id }).select('userId').exec();
     const users = await this.users
       .find({
@@ -568,7 +568,7 @@ function present(item: NotificationDocument, lang: Lang) {
   const [title, body] = (() => {
     switch (item.kind) {
       case 'FITS_YOUR_CAR':
-        return [t(lang, 'notifications.fitsTitle'), t(lang, 'notifications.fitsBody', params)];
+        return [t(lang, 'notifications.fitsTitle'), t(lang, params[1] ? 'notifications.fitsBody' : 'notifications.fitsBodyNoPrice', params)];
       case 'PRICE_DROP':
         return [
           t(lang, 'notifications.priceDropTitle'),
@@ -609,7 +609,7 @@ function present(item: NotificationDocument, lang: Lang) {
       case 'PART_REQUEST': {
         const [event, ...rest] = params;
         return event === 'REPLY'
-          ? [t(lang, 'notifications.requestReplyTitle'), t(lang, 'notifications.requestReplyBody', rest)]
+          ? [t(lang, 'notifications.requestReplyTitle'), t(lang, rest[1] ? 'notifications.requestReplyBody' : 'notifications.requestReplyBodyNoPrice', rest)]
           : [t(lang, 'notifications.requestNewTitle'), t(lang, 'notifications.requestNewBody', rest)];
       }
       case 'ACCOUNT': {

@@ -105,7 +105,7 @@ export function pageMetaResolver(models: { Part: PartModel; Shop: ShopModel }, s
       const shop = found.shopId ? await models.Shop.findById(found.shopId).select('name').lean().exec() : null;
       const cars = found.fitsAllCars ? 'يركب على كل العربيات' : carsOf(found.fitments);
       const condition = CONDITION[found.condition as PartCondition];
-      const facts = [`${condition}${found.isOriginal ? ' أصلي' : ''}`, `${found.price.toLocaleString('en')} جنيه`, found.city, cars && `لـ ${cars}`].filter(Boolean);
+      const facts = [`${condition}${found.isOriginal ? ' أصلي' : ''}`, found.price != null && `${found.price.toLocaleString('en')} جنيه`, found.city, cars && `لـ ${cars}`].filter(Boolean);
       const itemCondition = found.condition === 'USED' ? 'https://schema.org/UsedCondition' : 'https://schema.org/NewCondition';
       const url = `${siteUrl}${clean}`;
       return {
@@ -129,8 +129,7 @@ export function pageMetaResolver(models: { Part: PartModel; Shop: ShopModel }, s
           offers: {
             '@type': 'Offer',
             url,
-            price: found.price,
-            priceCurrency: 'EGP',
+            ...(found.price == null ? {} : { price: found.price, priceCurrency: 'EGP' }),
             availability: found.isSold ? 'https://schema.org/SoldOut' : 'https://schema.org/InStock',
             itemCondition,
             areaServed: { '@type': 'Country', name: 'Egypt' },

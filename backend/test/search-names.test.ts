@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { listPart, signUp } from './helpers/people.js';
+import { auth, listPart, signUp } from './helpers/people.js';
 import { startTestApp, type TestApp } from './helpers/test-app.js';
 
 let app: TestApp;
@@ -126,6 +126,26 @@ describe('searching by any name for a part', () => {
     const second = (await app.api.get('/api/v1/parts').query({ q: 'سيراتو', sort: 'RELEVANCE', limit: 1, cursor: first.nextCursor }).expect(200)).body.data;
     expect([first.items[0].name, second.items[0].name]).toEqual(['شنطة سيراتو', 'مساعد كيا']);
     expect(second.nextCursor).toBeNull();
+  });
+
+  it('lists a part without a price, leaves it out of price sorts, and lets the seller price it later', async () => {
+    const seller = await signUp(app, 'seller@example.com');
+    const free = await listPart(app, seller.token, { name: 'مارش', category: 'ELECTRICAL', price: null });
+    await listPart(app, seller.token, { name: 'مارش', category: 'ELECTRICAL', condition: 'USED', price: 900 });
+    expect(free.price).toBeNull();
+
+    const prices = async (query: Record<string, string>) =>
+      ((await app.api.get('/api/v1/parts').query({ q: 'مارش', ...query }).expect(200)).body.data.items as { price: number | null }[]).map((p) => p.price);
+    expect((await prices({})).sort()).toEqual([900, null]);
+    expect(await prices({ sort: 'PRICE_LOW' })).toEqual([900]);
+    expect(await prices({ maxPrice: '5000' })).toEqual([900]);
+
+    const priced = await app.api.patch(`/api/v1/parts/${free.id}`).set(auth(seller.token)).send({ price: 1200 }).expect(200);
+    expect(priced.body.data.price).toBe(1200);
+    const cleared = await app.api.patch(`/api/v1/parts/${free.id}`).set(auth(seller.token)).send({ price: null }).expect(200);
+    expect(cleared.body.data.price).toBeNull();
+    // A discount needs a price.
+    expect((await app.api.patch(`/api/v1/parts/${free.id}`).set(auth(seller.token)).send({ oldPrice: 1500 })).status).toBe(400);
   });
 
   it('with a car chosen, puts the parts listed for it before the ones for every car', async () => {

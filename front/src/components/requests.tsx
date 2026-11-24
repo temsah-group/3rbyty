@@ -51,7 +51,7 @@ export function ReplyForm({ request, onSent }: { request: PartRequest; onSent: (
   const { tr, lang } = useI18n();
   const toast = useToast();
   const mine = request.myReply;
-  const [price, setPrice] = useState(mine ? String(mine.price) : '');
+  const [price, setPrice] = useState(mine?.price != null ? String(mine.price) : '');
   const [condition, setCondition] = useState<Condition>(mine?.condition ?? 'NEW');
   const [isOriginal, setIsOriginal] = useState(mine?.isOriginal ?? true);
   const [note, setNote] = useState(mine?.note ?? '');
@@ -60,8 +60,9 @@ export function ReplyForm({ request, onSent }: { request: PartRequest; onSent: (
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const value = Number(price);
-    if (!Number.isInteger(value) || value < 1) {
+    // No price: "I have it", the buyer calls for it.
+    const value = price.trim() ? Number(price) : null;
+    if (value !== null && (!Number.isInteger(value) || value < 1)) {
       setError(tr('اكتب السعر بالجنيه', 'Enter the price in pounds'));
       return;
     }
@@ -80,7 +81,7 @@ export function ReplyForm({ request, onSent }: { request: PartRequest; onSent: (
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <TextField label={tr('سعرك بالجنيه', 'Your price (EGP)')} type="number" inputMode="numeric" min={1} value={price} onChange={(e) => setPrice(e.target.value)} error={error} autoFocus />
+      <TextField label={tr('سعرك بالجنيه (اختياري)', 'Your price in EGP (optional)')} type="number" inputMode="numeric" min={1} value={price} onChange={(e) => setPrice(e.target.value)} error={error} autoFocus />
       <Field label={tr('الحالة', 'Condition')}>
         <div className="flex flex-wrap gap-2">
           {CONDITIONS.map((c) => (
@@ -100,7 +101,7 @@ export function ReplyForm({ request, onSent }: { request: PartRequest; onSent: (
         <MessageSquareReply className="h-4 w-4" />
         {mine ? tr('عدّل ردك', 'Change your answer') : tr('ابعت ردك', 'Send your answer')}
       </Button>
-      {mine && <p className="text-center text-xs text-ink-soft">{tr(`ردك الحالي: ${formatPrice(mine.price, lang)}`, `Your answer: ${formatPrice(mine.price, lang)}`)}</p>}
+      {mine?.price != null && <p className="text-center text-xs text-ink-soft">{tr(`ردك الحالي: ${formatPrice(mine.price, lang)}`, `Your answer: ${formatPrice(mine.price, lang)}`)}</p>}
     </form>
   );
 }

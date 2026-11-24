@@ -106,10 +106,10 @@ export function PartCard({ part }: { part: Part }) {
             {tr('اتباعت', 'Sold')}
           </span>
         )}
-        {part.oldPrice && part.oldPrice > part.price && !part.isSold && (
+        {part.oldPrice && part.price != null && part.oldPrice > part.price && !part.isSold && (
           // The corner opposite the heart; only the number reads left to right ("-14%").
           <span className="absolute start-2 top-2 rounded-md bg-orange px-2 py-0.5 text-xs font-bold text-white">
-            <bdi dir="ltr">-{Math.round((1 - part.price / part.oldPrice) * 100)}%</bdi>
+            <bdi dir="ltr">-{Math.round((1 - (part.price ?? 0) / part.oldPrice) * 100)}%</bdi>
           </span>
         )}
       </div>
@@ -133,8 +133,8 @@ export function PartCard({ part }: { part: Part }) {
           )}
         </p>
         <div className="mt-auto flex flex-wrap items-baseline gap-x-2 pt-1">
-          <span className="text-lg font-extrabold text-navy">{formatPrice(part.price, lang)}</span>
-          {part.oldPrice && part.oldPrice > part.price && <s className="text-xs text-ink-muted">{formatPrice(part.oldPrice, lang)}</s>}
+          {part.price != null && <span className="text-lg font-extrabold text-navy">{formatPrice(part.price, lang)}</span>}
+          {part.oldPrice && part.price != null && part.oldPrice > part.price && <s className="text-xs text-ink-muted">{formatPrice(part.oldPrice, lang)}</s>}
         </div>
         <div className="mt-1 flex items-center justify-between gap-2 border-t border-line pt-2 text-xs text-ink-soft">
           <span className="flex min-w-0 items-center gap-1">

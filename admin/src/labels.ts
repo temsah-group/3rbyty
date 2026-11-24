@@ -90,7 +90,7 @@ export const roles: Record<string, string> = { OWNER: 'مالك', MODERATOR: 'م
 export const label = (map: Record<string, string>, value: string) => map[value] ?? value
 
 const money = new Intl.NumberFormat('ar-EG')
-export const formatPrice = (value: number) => `${money.format(value)} ج.م`
+export const formatPrice = (value: number | null) => (value == null ? '—' : `${money.format(value)} ج.م`)
 
 const dateTime = new Intl.DateTimeFormat('ar-EG', { dateStyle: 'medium', timeStyle: 'short' })
 const dateOnly = new Intl.DateTimeFormat('ar-EG', { dateStyle: 'medium' })

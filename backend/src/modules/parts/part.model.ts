@@ -37,8 +37,8 @@ const partSchema = new Schema(
     category: { type: String, enum: PART_CATEGORIES, required: true },
     condition: { type: String, enum: PART_CONDITIONS, required: true },
     isOriginal: { type: Boolean, default: false },
-    /** Whole Egyptian pounds. */
-    price: { type: Number, required: true },
+    /** Whole Egyptian pounds; null: the buyer asks the seller. */
+    price: { type: Number, default: null },
     oldPrice: { type: Number, default: null },
     partNumber: { type: String, default: null },
     description: { type: String, default: null },

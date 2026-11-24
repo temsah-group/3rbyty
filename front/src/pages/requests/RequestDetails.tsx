@@ -100,7 +100,11 @@ export default function RequestDetails() {
                     className="mt-3"
                     phone={reply.shop.phone}
                     whatsapp={reply.shop.whatsapp}
-                    message={tr(`السلام عليكم، بخصوص طلبي "${r.partName}" على عربيتي، ردكم كان ${reply.price} جنيه.`, `Hi, about my request "${r.partName}" on 3arabity, your answer was ${reply.price} EGP.`)}
+                    message={
+                      reply.price == null
+                        ? tr(`السلام عليكم، بخصوص طلبي "${r.partName}" على عربيتي، القطعة موجودة عندكم بكام؟`, `Hi, about my request "${r.partName}" on 3arabity, how much is it?`)
+                        : tr(`السلام عليكم، بخصوص طلبي "${r.partName}" على عربيتي، ردكم كان ${reply.price} جنيه.`, `Hi, about my request "${r.partName}" on 3arabity, your answer was ${reply.price} EGP.`)
+                    }
                   />
                 </li>
               ))}
@@ -109,7 +113,7 @@ export default function RequestDetails() {
         </section>
       ) : (
         <section className="mt-6 rounded-2xl bg-white p-5 ring-1 ring-line">
-          <h2 className="mb-4 text-lg font-extrabold">{r.myReply ? tr('ردك', 'Your answer') : tr('عندك القطعة دي؟ رد بسعرك', 'Have it? Answer with your price')}</h2>
+          <h2 className="mb-4 text-lg font-extrabold">{r.myReply ? tr('ردك', 'Your answer') : tr('عندك القطعة دي؟ رد عليه', 'Have it? Answer them')}</h2>
           {r.open ? (
             <ReplyForm request={r} onSent={() => queryClient.invalidateQueries({ queryKey: ['request', id] })} />
           ) : (

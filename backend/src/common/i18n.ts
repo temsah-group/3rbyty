@@ -231,6 +231,10 @@ const messages = {
     ar: '{0} بـ {1} جنيه في {2}',
     en: '{0} for EGP {1} in {2}',
   },
+  'notifications.fitsBodyNoPrice': {
+    ar: '{0} في {2}',
+    en: '{0} in {2}',
+  },
   'notifications.priceDropTitle': {
     ar: 'نزل سعر قطعة محفوظة',
     en: 'A saved part got cheaper',
@@ -284,6 +288,10 @@ const messages = {
   'notifications.requestReplyBody': {
     ar: '{0} عنده "{2}" بـ {1} جنيه.',
     en: '{0} has "{2}" for {1} EGP.',
+  },
+  'notifications.requestReplyBodyNoPrice': {
+    ar: '{0} عنده "{2}". كلّمه واسأل عن السعر.',
+    en: '{0} has "{2}". Call them for the price.',
   },
   'shops.applied': {
     ar: 'وصلنا طلبك، هنراجعه ونبلغك',

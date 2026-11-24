@@ -102,6 +102,21 @@ describe('asking shops for a part', () => {
     await app.api.post(`/api/v1/requests/${id}/replies`).set(auth(alex.token)).send({ price: 900, condition: 'USED' }).expect(200);
   });
 
+  it('takes an answer without a price, after the ones with one', async () => {
+    const cheap = await openShop('cheap@example.com');
+    const noPrice = await openShop('noprice@example.com');
+    const buyer = await signUp(app, 'buyer@example.com');
+    const id = (await ask(buyer.token).expect(201)).body.data.id as string;
+
+    await app.api.post(`/api/v1/requests/${id}/replies`).set(auth(noPrice.token)).send({ condition: 'USED' }).expect(200);
+    await app.api.post(`/api/v1/requests/${id}/replies`).set(auth(cheap.token)).send({ price: 600, condition: 'NEW' }).expect(200);
+    const seen = (await app.api.get(`/api/v1/requests/${id}`).set(auth(buyer.token)).expect(200)).body.data;
+    expect(seen.replies.map((r: { price: number | null }) => r.price)).toEqual([600, null]);
+    const told = (await notificationsOf(buyer.token)).filter((n) => n.requestId === id);
+    expect(told.some((n) => n.body.includes('السعر'))).toBe(true);
+    expect((await inboxOf(noPrice.token))[0]!.myReply).toMatchObject({ price: null });
+  });
+
   it('takes a car typed by hand, and checks what it is given', async () => {
     const shop = await openShop('any@example.com', { brandIds: [] });
     const buyer = await signUp(app, 'buyer@example.com');

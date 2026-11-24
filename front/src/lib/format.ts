@@ -1,7 +1,8 @@
 import type { Lang } from './i18n';
 
-/** `12500` → `12,500 ج.م` (or `12,500 EGP`). */
-export function formatPrice(pounds: number, lang: Lang) {
+/** `12500` → `12,500 ج.م` (or `12,500 EGP`); no price: nothing. */
+export function formatPrice(pounds: number | null, lang: Lang) {
+  if (pounds == null) return '';
   return `${pounds.toLocaleString('en-US')} ${lang === 'ar' ? 'ج.م' : 'EGP'}`;
 }
 

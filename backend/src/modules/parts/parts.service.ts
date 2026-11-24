@@ -217,9 +217,9 @@ export class PartsService {
     const priceBefore = part.price;
     if (input.images) await this.assertPhotos(userId, input.images, before);
     if (input.oldPrice !== undefined || input.price !== undefined) {
-      const price = input.price ?? part.price;
+      const price = input.price === undefined ? part.price : input.price;
       const oldPrice = input.oldPrice === undefined ? part.oldPrice : input.oldPrice;
-      if (oldPrice != null && oldPrice <= price) {
+      if (oldPrice != null && (price == null || oldPrice <= price)) {
         throw badRequest(ErrorCode.VALIDATION_FAILED, 'validation.oldPrice');
       }
     }
@@ -246,7 +246,7 @@ export class PartsService {
     await this.claimPhotos(userId, part);
     // Photos taken off the listing are deleted.
     await this.dropPhotos(before.filter((path) => !part.images.includes(path)));
-    if (part.price < priceBefore) {
+    if (part.price != null && priceBefore != null && part.price < priceBefore) {
       await this.emit(() => this.events.priceDropped?.(part, priceBefore));
     }
     return (await this.present([part], userId))[0]!;
@@ -489,6 +489,8 @@ export class PartsService {
   ): Promise<Page> {
     const { field, direction } = SORTS[sortName];
     const query: QueryFilter<Part> = { ...filter };
+    // Sorted by price: the parts with one (no price is neither cheap nor dear).
+    if (field === 'price' && !query.price) query.price = { $ne: null };
     const after = decodeCursor(cursor, field === 'listedAt' ? 'date' : 'number');
     if (after) {
       const op = direction === -1 ? '$lt' : '$gt';
