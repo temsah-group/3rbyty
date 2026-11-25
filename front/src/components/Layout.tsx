@@ -248,11 +248,11 @@ function Footer() {
 }
 
 /** Facebook and Instagram from the icon set; TikTok's note drawn here (the set has none). */
-function SocialIcon({ id }: { id: (typeof SOCIAL)[number]['id'] }) {
-  if (id === 'facebook') return <Facebook className="h-5 w-5" />;
-  if (id === 'instagram') return <Instagram className="h-5 w-5" />;
+export function SocialIcon({ id, className = 'h-5 w-5' }: { id: (typeof SOCIAL)[number]['id']; className?: string }) {
+  if (id === 'facebook') return <Facebook className={className} />;
+  if (id === 'instagram') return <Instagram className={className} />;
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
       <path d="M16.6 5.82A4.28 4.28 0 0 1 15.54 3h-3.09v12.4a2.59 2.59 0 0 1-2.59 2.5 2.59 2.59 0 0 1-2.59-2.59 2.59 2.59 0 0 1 3.36-2.47V9.68a5.73 5.73 0 0 0-.77-.05A5.68 5.68 0 0 0 4.18 15.3 5.68 5.68 0 0 0 9.86 21a5.68 5.68 0 0 0 5.68-5.68V9.01a7.35 7.35 0 0 0 4.3 1.38V7.3a4.3 4.3 0 0 1-3.24-1.48Z" />
     </svg>
   );

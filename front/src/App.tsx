@@ -37,6 +37,7 @@ const InstallApp = lazy(() => import('@/pages/InstallApp'));
 const Help = lazy(() => import('@/pages/Help').then((m) => ({ default: m.Help })));
 const Legal = lazy(() => import('@/pages/Help').then((m) => ({ default: m.Legal })));
 const NotFound = lazy(() => import('@/pages/NotFound'));
+const Connect = lazy(() => import('@/pages/Connect'));
 
 /** Signed-in pages send guests to sign in, then back. */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -114,6 +115,8 @@ const router = createBrowserRouter([
           { path: '*', element: page(<NotFound />) },
         ],
       },
+      // The QR on our cards: a page of its own, without the header and footer.
+      { path: '/connect', element: page(<Connect />) },
     ],
   },
 ]);
