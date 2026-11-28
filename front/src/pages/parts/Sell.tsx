@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { BrandSelect, withOtherBrand, YearField, yearOk } from '@/components/cars';
-import { Button, cx, Dialog, ErrorState, Field, Img, Input, PageSpinner, Select, Textarea, TextField, useToast } from '@/components/ui';
+import { Button, cx, Dialog, ErrorState, Field, Img, Input, PageSpinner, Textarea, TextField, useToast } from '@/components/ui';
 import { MicButton } from '@/components/MicButton';
 import { VoiceFill, type SpokenFields } from '@/components/VoiceFill';
 import { PickSelect } from '@/components/PickSelect';
@@ -183,74 +183,130 @@ function BrandChips({ fitments, onChange }: { fitments: Fitment[]; onChange: (fi
   );
 }
 
-/** The model select's choice for a model typed by hand. */
-const TYPED = '__typed';
-
 /**
- * One car the part fits: a make and model from the list or typed, and the
- * years, from lists starting in 1998 or typed older. Years left empty mean
- * all of them.
+ * The cars the part fits, one make at a time: a make from the list or typed,
+ * then as many of its models as it fits (tapped from the list, found by
+ * typing, or typed when not listed), and the years, the same for all of
+ * them. Years left empty mean all of them.
  */
-function FitmentDialog({ open, onClose, onAdd }: { open: boolean; onClose: () => void; onAdd: (f: Fitment) => void }) {
+function FitmentDialog({ open, onClose, onAdd, room }: { open: boolean; onClose: () => void; onAdd: (f: Fitment[]) => void; room: number }) {
   const { tr, pick } = useI18n();
   const { brands } = useLabels();
   const [brandId, setBrandId] = useState('');
-  const [modelId, setModelId] = useState('');
   const [brandName, setBrandName] = useState('');
-  const [modelName, setModelName] = useState('');
+  const [modelIds, setModelIds] = useState<string[]>([]);
+  const [typedModels, setTypedModels] = useState<string[]>([]);
+  const [find, setFind] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const typedBrand = brandId === OTHER_BRAND;
-  const typedModel = typedBrand || modelId === TYPED;
   const brand = brands.find((b) => b.id === brandId);
-  const model = typedModel ? null : (brand?.models.find((m) => m.id === modelId) ?? null);
-  const carChosen = Boolean(brandId) && (!typedBrand || brandName.trim().length >= 2) && (typedModel ? modelName.trim().length >= 2 : Boolean(model));
-  const yearsOk = (from === '' || yearOk(model, from)) && (to === '' || yearOk(model, to, from === '' ? 0 : Number(from)));
+  const chosen = brand ? brand.models.filter((m) => modelIds.includes(m.id)) : [];
+  const count = chosen.length + typedModels.length;
+  const full = count >= room;
+  // The years every chosen model was made in, for the year lists.
+  const span = chosen.length && !typedModels.length
+    ? { fromYear: Math.min(...chosen.map((m) => m.fromYear)), toYear: chosen.some((m) => m.toYear === null) ? null : Math.max(...chosen.map((m) => m.toYear ?? 0)) }
+    : null;
+  const carChosen = Boolean(brandId) && (!typedBrand || brandName.trim().length >= 2) && count > 0;
+  const yearsOk = (from === '' || yearOk(span, from)) && (to === '' || yearOk(span, to, from === '' ? 0 : Number(from)));
+  const key = carKey(find);
+  const shown = brand ? brand.models.filter((m) => !key || carKey(`${m.nameAr} ${m.nameEn}`).includes(key)) : [];
 
   const reset = () => {
     setBrandId('');
-    setModelId('');
     setBrandName('');
-    setModelName('');
+    setModelIds([]);
+    setTypedModels([]);
+    setFind('');
     setFrom('');
     setTo('');
   };
-  const pickYears = (key: string) => {
+  const toggle = (id: string) => {
+    setModelIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : full ? ids : [...ids, id]));
     setFrom('');
     setTo('');
-    return key;
   };
+  // Enter: the one model the typing finds, or the typed name as a model of its own.
+  const addTyped = () => {
+    const name = find.trim();
+    if (name.length < 2 || full) return;
+    if (shown.length === 1 && !typedBrand) {
+      if (!modelIds.includes(shown[0]!.id)) toggle(shown[0]!.id);
+    } else if (!typedModels.some((m) => carKey(m) === carKey(name))) {
+      setTypedModels((list) => [...list, name]);
+    }
+    setFind('');
+  };
+  const chip = 'flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-bold ring-1 transition-colors disabled:opacity-40';
 
   return (
-    <Dialog open={open} onClose={() => { reset(); onClose(); }} title={tr('بتركب على أنهي عربية؟', 'Which car does it fit?')}>
+    <Dialog open={open} onClose={() => { reset(); onClose(); }} title={tr('بتركب على أنهي عربيات؟', 'Which cars does it fit?')}>
       <div className="space-y-4">
         <Field label={tr('الماركة', 'Make')}>
-          <BrandSelect brands={withOtherBrand(brands)} value={brandId} onChange={(id) => { setBrandId(id); setModelId(pickYears('')); }} placeholder={tr('اختار', 'Choose')} ariaLabel={tr('الماركة', 'Make')} />
+          <BrandSelect brands={withOtherBrand(brands)} value={brandId} onChange={(id) => { reset(); setBrandId(id); }} placeholder={tr('اختار', 'Choose')} ariaLabel={tr('الماركة', 'Make')} />
           {typedBrand && <Input value={brandName} onChange={(e) => setBrandName(e.target.value)} maxLength={40} placeholder={tr('اكتب الماركة', 'Type the make')} className="mt-2" autoFocus />}
         </Field>
         {brandId && (
-          <Field label={tr('الموديل', 'Model')}>
-            {!typedBrand && brand && (
-              <Select value={modelId} onChange={(e) => setModelId(pickYears(e.target.value))}>
-                <option value="">{tr('اختار', 'Choose')}</option>
-                {brand.models.map((m) => <option key={m.id} value={m.id}>{pick(m.nameAr, m.nameEn)}</option>)}
-                <option value={TYPED}>{tr('مش موجود… هكتبه', "Not listed… I'll type it")}</option>
-              </Select>
+          <Field label={tr('الموديلات (اختار كل اللي بتركب عليه)', 'Models (pick every one it fits)')}>
+            <div className="flex gap-2">
+              <Input
+                value={find}
+                onChange={(e) => setFind(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addTyped();
+                  }
+                }}
+                maxLength={40}
+                placeholder={typedBrand ? tr('اكتب الموديل واضغط ضيف', 'Type a model, then Add') : tr('دوّر على موديل…', 'Find a model…')}
+                aria-label={tr('الموديل', 'Model')}
+              />
+              {(typedBrand || (key && shown.length === 0)) && (
+                <Button size="sm" onClick={addTyped} disabled={find.trim().length < 2 || full}>
+                  {tr('ضيف', 'Add')}
+                </Button>
+              )}
+            </div>
+            <div className="mt-3 flex max-h-60 flex-wrap gap-2 overflow-y-auto">
+              {shown.map((m) => {
+                const on = modelIds.includes(m.id);
+                return (
+                  <button key={m.id} type="button" aria-pressed={on} disabled={!on && full} onClick={() => toggle(m.id)} className={cx(chip, on ? 'bg-navy text-white ring-navy' : 'bg-white ring-line hover:ring-navy')}>
+                    {on && <Check className="h-4 w-4" />}
+                    {pick(m.nameAr, m.nameEn)}
+                  </button>
+                );
+              })}
+              {typedModels.map((name) => (
+                <button key={carKey(name)} type="button" aria-pressed onClick={() => setTypedModels((list) => list.filter((x) => x !== name))} className={cx(chip, 'bg-navy text-white ring-navy')}>
+                  <Check className="h-4 w-4" />
+                  {name}
+                </button>
+              ))}
+            </div>
+            {!typedBrand && key && shown.length === 0 && (
+              <p className="mt-2 text-xs text-ink-soft">{tr('مش في القايمة؟ اضغط ضيف وهيتضاف زي ما كتبته.', 'Not listed? Tap Add to add it as typed.')}</p>
             )}
-            {typedModel && <Input value={modelName} onChange={(e) => setModelName(e.target.value)} maxLength={40} placeholder={tr('اكتب الموديل', 'Type the model')} className={typedBrand ? '' : 'mt-2'} autoFocus={!typedBrand} />}
+            {full && <p className="mt-2 text-xs text-ink-soft">{tr('وصلت لأقصى عدد عربيات للقطعة.', 'That is the most cars a part can have.')}</p>}
           </Field>
         )}
         {carChosen && (
           <>
             <div className="grid grid-cols-2 gap-3">
               <Field label={tr('من سنة', 'From')}>
-                <YearField key={`from:${brandId}:${modelId}`} model={model} value={from} onChange={setFrom} ariaLabel={tr('من سنة', 'From')} />
+                <YearField key={`from:${brandId}:${modelIds.join()}:${typedModels.length}`} model={span} value={from} onChange={setFrom} ariaLabel={tr('من سنة', 'From')} />
               </Field>
               <Field label={tr('لحد سنة', 'To')}>
-                <YearField key={`to:${brandId}:${modelId}:${from}`} model={model} value={to} onChange={setTo} minYear={from === '' ? undefined : Number(from)} ariaLabel={tr('لحد سنة', 'To')} />
+                <YearField key={`to:${brandId}:${modelIds.join()}:${typedModels.length}:${from}`} model={span} value={to} onChange={setTo} minYear={from === '' ? undefined : Number(from)} ariaLabel={tr('لحد سنة', 'To')} />
               </Field>
             </div>
-            <p className="-mt-2 text-xs text-ink-soft">{tr('سيب السنين فاضية لو بتركب على كل السنين.', 'Leave the years empty if it fits every year.')}</p>
+            <p className="-mt-2 text-xs text-ink-soft">
+              {count > 1
+                ? tr('السنين دي لكل الموديلات اللي اخترتها. سيبها فاضية لو بتركب على كل السنين.', 'These years are for every model you picked. Leave them empty for every year.')
+                : tr('سيب السنين فاضية لو بتركب على كل السنين.', 'Leave the years empty if it fits every year.')}
+            </p>
           </>
         )}
         <Button
@@ -259,19 +315,17 @@ function FitmentDialog({ open, onClose, onAdd }: { open: boolean; onClose: () =>
           onClick={() => {
             const fromYear = from === '' ? null : Number(from);
             const toYear = to === '' ? fromYear : Math.max(Number(to), fromYear ?? 0);
-            onAdd({
-              brandId,
-              brandName: typedBrand ? brandName.trim() : null,
-              modelId: typedModel ? null : modelId,
-              modelName: typedModel ? modelName.trim() : null,
-              fromYear: fromYear ?? (toYear !== null ? toYear : null),
-              toYear,
-            });
+            const years = { fromYear: fromYear ?? (toYear !== null ? toYear : null), toYear };
+            const make = { brandId, brandName: typedBrand ? brandName.trim() : null };
+            onAdd([
+              ...chosen.map((m) => ({ ...make, modelId: m.id, modelName: null, ...years })),
+              ...typedModels.map((name) => ({ ...make, modelId: null, modelName: name, ...years })),
+            ]);
             reset();
             onClose();
           }}
         >
-          {tr('ضيف', 'Add')}
+          {count > 1 ? tr(`ضيف ${count} موديلات`, `Add ${count} models`) : tr('ضيف', 'Add')}
         </Button>
       </div>
     </Dialog>
@@ -674,7 +728,7 @@ export default function Sell() {
                 {draft.fitments.length < 20 && (
                   <button type="button" className="mt-3 text-sm font-bold text-orange-deep hover:underline" onClick={() => setFitmentOpen(true)}>
                     <Plus className="me-1 inline h-4 w-4" />
-                    {tr('حدد موديل وسنة معينة (اختياري)', 'Pick a specific model and years (optional)')}
+                    {tr('حدد موديلات وسنين معينة (اختياري)', 'Pick specific models and years (optional)')}
                   </button>
                 )}
               </>
@@ -768,7 +822,17 @@ export default function Sell() {
       </div>
       )}
 
-      <FitmentDialog open={fitmentOpen} onClose={() => setFitmentOpen(false)} onAdd={(f) => set('fitments', [...draft.fitments.filter((x) => x.modelId || x.modelName || x.brandId !== f.brandId || x.brandId === OTHER_BRAND), f])} />
+      <FitmentDialog
+        open={fitmentOpen}
+        onClose={() => setFitmentOpen(false)}
+        room={20 - draft.fitments.length}
+        onAdd={(added) => {
+          // A make's own chip (all its models) gives way to the models picked for it; the same car isn't added twice.
+          const same = (a: Fitment, b: Fitment) => a.brandId === b.brandId && carKey(a.brandName) === carKey(b.brandName) && (a.modelId ?? `~${carKey(a.modelName)}`) === (b.modelId ?? `~${carKey(b.modelName)}`) && a.fromYear === b.fromYear && a.toYear === b.toYear;
+          const kept = draft.fitments.filter((x) => x.modelId || x.modelName || x.brandId === OTHER_BRAND || !added.some((f) => f.brandId === x.brandId));
+          set('fitments', [...kept, ...added.filter((f) => !kept.some((x) => same(x, f)))].slice(0, 20));
+        }}
+      />
     </div>
   );
 }
